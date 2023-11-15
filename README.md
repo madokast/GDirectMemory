@@ -1,2 +1,2 @@
-# GDirectMemory
-DirectMemory in Golang
+# direct
+Direct, GC-free memory in Golang
