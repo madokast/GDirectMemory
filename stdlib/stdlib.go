@@ -10,7 +10,7 @@ typedef void* memory;
 memory mymalloc(size_t sz, char debug) {
 	memory m;
 	if (debug) {
-		printf("[DEBUG] %s:%d malloc %llu bytes ", __FILE__, __LINE__, (unsigned long long int)sz);
+		printf("%s:%d malloc %llu bytes ", __FILE__, __LINE__, (unsigned long long int)sz);
 	}
 	m = (memory)malloc(sz);
 	if (debug) {
@@ -22,7 +22,7 @@ memory mymalloc(size_t sz, char debug) {
 
 void myfree(memory m, char debug) {
 	if (debug) {
-		printf("[DEBUG] %s:%d free memory 0x%llX\n", __FILE__, __LINE__, (unsigned long long int)m);
+		printf("%s:%d free memory 0x%llX\n", __FILE__, __LINE__, (unsigned long long int)m);
 		fflush(stdout);
 	}
 	free((void*)m);
@@ -36,15 +36,15 @@ import (
 )
 
 type Memory struct {
-	Address uintptr
+	Address uintptr // no gc scan
 	Size    uint
 }
 
-var Debug = config.DEBUG
+const vebose = config.VEBOSE
 
 func Malloc(size uint) Memory {
 	var debug C.char = 0
-	if Debug {
+	if vebose {
 		debug = 1
 	}
 	return Memory{Address: uintptr(C.mymalloc(C.size_t(size), debug)), Size: size}
@@ -52,7 +52,7 @@ func Malloc(size uint) Memory {
 
 func (m Memory) Free() {
 	var debug C.char = 0
-	if Debug {
+	if vebose {
 		debug = 1
 	}
 	C.myfree(C.memory(m.Address), debug)

@@ -9,10 +9,3 @@ func TestMalloc(t *testing.T) {
 	t.Log("Obtain mempry", m.ToString())
 	m.Free()
 }
-
-func TestMallocDebug(t *testing.T) {
-	Debug = true
-	m := Malloc(128)
-	t.Log("Obtain mempry", m.ToString())
-	m.Free()
-}
