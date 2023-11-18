@@ -31,8 +31,6 @@ void myfree(memory m, char debug) {
 import "C"
 import (
 	"fmt"
-
-	"github.com/madokast/direct/config"
 )
 
 type Memory struct {
@@ -40,11 +38,11 @@ type Memory struct {
 	Size    uint
 }
 
-const vebose = config.VEBOSE
+const Verbose = false
 
 func Malloc(size uint) Memory {
 	var debug C.char = 0
-	if vebose {
+	if Verbose {
 		debug = 1
 	}
 	return Memory{Address: uintptr(C.mymalloc(C.size_t(size), debug)), Size: size}
@@ -52,7 +50,7 @@ func Malloc(size uint) Memory {
 
 func (m Memory) Free() {
 	var debug C.char = 0
-	if vebose {
+	if Verbose {
 		debug = 1
 	}
 	C.myfree(C.memory(m.Address), debug)

@@ -5,7 +5,8 @@ import (
 	"unsafe"
 )
 
-// String represents a string in direct memory
+// String represents a gc-free string in direct memory
+// The structure is same as reflect.StringHeader
 type String struct {
 	address uintptr
 	length  int
