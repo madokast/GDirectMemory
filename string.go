@@ -82,6 +82,11 @@ func (s String) Free(m *LocalMemory) {
 	if s.holder.pointer().IsNotNull() {
 		header := s.holder.header()
 		cnt := atomic.AddInt32(pointerAs[int32](header.elementBasePointer), -1)
+		if asserted {
+			if cnt < 0 {
+				panic(fmt.Sprintf("string holder cnt <(%d) 0", cnt))
+			}
+		}
 		if debug {
 			fmt.Printf("free string %s in holder count %d\n", s.AsGoString(), cnt)
 		}

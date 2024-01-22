@@ -162,7 +162,7 @@ func BenchmarkMyStringMapGet(b *testing.B) {
 	concurrentMemory := memory.NewConcurrentMemory()
 	defer concurrentMemory.Destroy()
 	factory := NewStringFactory()
-	defer factory.Destroy()
+	defer factory.Destroy(&concurrentMemory)
 
 	const sz = 100_0000
 	rand.Seed(1)

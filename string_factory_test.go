@@ -14,7 +14,7 @@ func TestNewStringFactory(t *testing.T) {
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
-	defer factory.Destroy()
+	defer factory.Destroy(&concurrentMemory)
 
 	s1, err := factory.CreateFromGoString("hello", &concurrentMemory)
 	PanicErr(err)
@@ -36,7 +36,7 @@ func TestString_Hashcode(t *testing.T) {
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
-	defer factory.Destroy()
+	defer factory.Destroy(&concurrentMemory)
 
 	s1, err := factory.CreateFromGoString("hello", &concurrentMemory)
 	PanicErr(err)
@@ -66,7 +66,7 @@ func TestStringFactory_CreateFromGoString(t *testing.T) {
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
-	defer factory.Destroy()
+	defer factory.Destroy(&concurrentMemory)
 
 	m, err := MakeMap[String, SizeType](0, &concurrentMemory)
 	PanicErr(err)
@@ -96,7 +96,7 @@ func TestStringFactory_CreateFromGoString1000(t *testing.T) {
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
-	defer factory.Destroy()
+	defer factory.Destroy(&concurrentMemory)
 
 	m, err := MakeMap[String, SizeType](0, &concurrentMemory)
 	PanicErr(err)
@@ -124,7 +124,7 @@ func TestStringFactory_CreateFromGoString_bigString(t *testing.T) {
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
-	defer factory.Destroy()
+	defer factory.Destroy(&concurrentMemory)
 
 	m, err := MakeMap[String, SizeType](0, &concurrentMemory)
 	PanicErr(err)

@@ -9,7 +9,7 @@ import (
 
 // StringFactory creates String. Thread-unsafe
 type StringFactory struct {
-	holder Slice[byte] // str-count + mutex + data
+	holder Slice[byte] // str-count + data
 	noCopy noCopy
 }
 
@@ -35,6 +35,16 @@ func (sf *StringFactory) CreateFromGoString(gs string, m *LocalMemory) (s String
 			if debug {
 				fmt.Printf("holder(len=%d, cap=%d) cannot add new string(len=%d)\n", sfHolderHeader.length, sfHolderHeader.capacity, gsLength)
 			}
+			// detach
+			cnt := atomic.AddInt32(pointerAs[int32](sfHolderHeaderElementBasePointer), -1)
+			if asserted {
+				if cnt < 0 {
+					panic(fmt.Sprintf("string holder cnt(%d) < 0", cnt))
+				}
+			}
+			if cnt == 0 {
+				sfHolder.Free(m)
+			}
 			sfHolder = nullSlice
 		}
 	}
@@ -48,8 +58,8 @@ func (sf *StringFactory) CreateFromGoString(gs string, m *LocalMemory) (s String
 		sfHolderHeader = sfHolder.header()
 		sfHolderHeader.length = Sizeof[int32]()
 		sfHolderHeaderElementBasePointer = sfHolderHeader.elementBasePointer
-		// clean count
-		*pointerAs[int32](sfHolderHeaderElementBasePointer) = 0
+		// ref cnt 1 for the factory
+		*pointerAs[int32](sfHolderHeaderElementBasePointer) = 1
 	}
 
 	if asserted {
@@ -83,7 +93,21 @@ func (sf *StringFactory) CreateFromGoString(gs string, m *LocalMemory) (s String
 	return s, nil
 }
 
-func (sf *StringFactory) Destroy() {}
+func (sf *StringFactory) Destroy(m *LocalMemory) {
+	holder := sf.holder
+	if holder != nullSlice {
+		cnt := atomic.AddInt32(pointerAs[int32](holder.header().elementBasePointer), -1)
+		if asserted {
+			if cnt < 0 {
+				panic(fmt.Sprintf("string holder cnt(%d) < 0", cnt))
+			}
+		}
+		if cnt == 0 {
+			holder.Free(m)
+		}
+		sf.holder = nullSlice
+	}
+}
 
 func init() {
 	if Sizeof[byte]() != 1 {
