@@ -42,7 +42,7 @@ func MakeMap[Key comparable, Value any](capacity SizeType, m *LocalMemory) (Map[
 		return makeCustomMap0[Key, Value](capacity, hashString[Key], equalString[Key], m, 5)
 	} else {
 		var k Key
-		str := fmt.Sprintf("%T is not simle type. Use MakeCustomMap", k)
+		str := fmt.Sprintf("%T is not simple type. Use MakeCustomMap", k)
 		return nilMap, errors.New(str)
 	}
 }
