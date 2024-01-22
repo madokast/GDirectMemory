@@ -1,8 +1,6 @@
-package managed_memory
+package direct
 
 import (
-	"gitlab.grandhoo.com/rock/storage/internal/logger"
-	"gitlab.grandhoo.com/rock/storage/storage2/utils/test"
 	"testing"
 )
 
@@ -12,18 +10,18 @@ func TestConcurrentMemory(t *testing.T) {
 
 	concurrentMemory := memory.NewConcurrentMemory()
 	defer func() {
-		logger.Info(concurrentMemory.localPages)
+		t.Log(concurrentMemory.localPages)
 		concurrentMemory.Destroy()
-		logger.Info(memory)
+		t.Log(memory)
 	}()
 
-	page, err := concurrentMemory.allocPage(5)
-	test.PanicErr(err)
-	logger.Info(page)
+	page, err := concurrentMemory.allocPage(5, "test", 1)
+	PanicErr(err)
+	t.Log(page)
 	concurrentMemory.freePage(page)
 
-	page, err = concurrentMemory.allocPage(2)
-	test.PanicErr(err)
-	logger.Info(page)
+	page, err = concurrentMemory.allocPage(2, "test", 1)
+	PanicErr(err)
+	t.Log(page)
 	concurrentMemory.freePage(page)
 }

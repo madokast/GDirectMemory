@@ -1,19 +1,14 @@
-package managed_memory
+package direct
 
 import (
-	"gitlab.grandhoo.com/rock/storage/internal/logger"
+	"fmt"
+	"os"
 	"sync"
 	"unsafe"
 )
 
 // Memory is thread-unsafe. Make a LocalMemory in thread
 type Memory pointer
-
-type memoryTrait interface {
-	allocPage(pageNumber SizeType) (PageHandler, error)
-	freePage(pageHandler PageHandler)
-	pagePointerOf(pageHandler PageHandler) pointer
-}
 
 type memoryHeader struct {
 	pageBasePointer         cacheShareWord[pointer] // pointer to the per first page
@@ -39,14 +34,33 @@ func New(size SizeType) Memory {
 	header.libPointer = ptr
 	header.allocatedPageNumber = 0
 	memoryLockerMap[m] = new(sync.Mutex)
+	if trace {
+		m.startTrace()
+	}
 	return m
 }
 
 func (m Memory) Free() {
-	if m.allocatedMemorySize() != 0 {
-		logger.Panic("memory leak!", m.String())
-	}
+	delete(memoryLockerMap, m)
 	libFree(m.header().libPointer)
+	if trace {
+		m.deleteTracer()
+	}
+}
+
+// IsMemoryLeak call it before Free
+func (m Memory) IsMemoryLeak() bool {
+	return m.allocatedMemorySize() != 0
+}
+
+// MemoryLeakInfo call it before Free
+func (m Memory) MemoryLeakInfo() string {
+	if trace {
+		return fmt.Sprint("Statistic info: \n", m.String(), "\n leaking objects: \n", m.tracer().leakReport())
+	} else {
+		_, _ = fmt.Fprintln(os.Stderr, "Memory trace is off. Turn on for more info")
+		return fmt.Sprint("Statistic info: ", m.String())
+	}
 }
 
 func (m Memory) pointer() pointer {

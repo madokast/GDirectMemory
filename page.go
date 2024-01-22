@@ -1,10 +1,8 @@
-package managed_memory
+package direct
 
 import (
 	"errors"
 	"fmt"
-	"gitlab.grandhoo.com/rock/storage/internal/logger"
-	"gitlab.grandhoo.com/rock/storage/storage2/utils/rpc/serializer"
 	"reflect"
 	"unsafe"
 )
@@ -18,7 +16,7 @@ func (m Memory) allocPage(pageNumber SizeType) (PageHandler, error) {
 			nextFreedPage := m.nextFreedPage(freedBasePageHeader)
 			header.freedBasePageHeader = nextFreedPage
 			if debug {
-				logger.Debug("alloc page from freedBasePage", freedBasePageHeader)
+				fmt.Println("alloc page from freedBasePage", freedBasePageHeader)
 			}
 			header.allocatedPageNumber++
 			return freedBasePageHeader, nil
@@ -35,7 +33,7 @@ func (m Memory) allocPage(pageNumber SizeType) (PageHandler, error) {
 					pointerAs[linkedFreePageHeader](m.pagePointerOf(previous)).next = linked.next
 				}
 				if debug {
-					logger.Debug("alloc", pageNumber, "pages from combinedPage", combinedPageHeader)
+					fmt.Println("alloc", pageNumber, "pages from combinedPage", combinedPageHeader)
 				}
 				header.allocatedPageNumber += linked.pageNumber
 				return combinedPageHeader, nil
@@ -45,7 +43,7 @@ func (m Memory) allocPage(pageNumber SizeType) (PageHandler, error) {
 		}
 		if debug {
 			if header.freedCombinedPageHeader.IsNotNull() {
-				logger.Debug("failed to reuse combined pages when alloc", pageNumber, "pages")
+				fmt.Println("failed to reuse combined pages when alloc", pageNumber, "pages")
 			}
 		}
 	}
@@ -53,15 +51,12 @@ func (m Memory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	newEmpty := header.emptyPageIndex + pageNumber
 	if newEmpty > header.maxPageIndex {
 		e := fmt.Sprintf("out of memory when alloc %d pages. The memory details is \n%s", pageNumber, m.String())
-		if debug {
-			logger.Warn(e, m.String())
-		}
 		return nullPageHandle, errors.New(e)
 	}
 	handler := makePageHandler(pageNumber, header.emptyPageIndex)
 	header.emptyPageIndex = newEmpty
 	if debug {
-		logger.Debug("alloc page from empty", handler)
+		fmt.Println("alloc page from empty", handler)
 	}
 	header.allocatedPageNumber += pageNumber
 	return handler, nil
@@ -70,14 +65,14 @@ func (m Memory) allocPage(pageNumber SizeType) (PageHandler, error) {
 func (m Memory) freePage(pageHandler PageHandler) {
 	if asserted {
 		if pageHandler.IsNull() {
-			logger.Panic("free null page")
+			panic("free null page")
 		}
 		libZero(m.pagePointerOf(pageHandler), pageHandler.Size())
 	}
 	pageNumber := pageHandler.PageNumber()
 	if asserted {
 		if pageNumber == 0 {
-			logger.Panic("pageNumber == 0")
+			panic("pageNumber == 0")
 		}
 	}
 	header := m.header()
@@ -131,7 +126,7 @@ func (m Memory) numberOfFreedCombinedPages() (number SizeType, pageNumber SizeTy
 func (m Memory) nextFreedPage(freedPageHandler PageHandler) PageHandler {
 	if asserted {
 		if freedPageHandler.IsNull() {
-			logger.Panic("nextFreedPage of null")
+			panic("nextFreedPage of null")
 		}
 	}
 	return pointerAs[linkedFreePageHeader](m.pagePointerOf(freedPageHandler)).next
@@ -146,7 +141,7 @@ type linkedFreePageHeader struct {
 func (m Memory) pagePointerOf(pageHandler PageHandler) pointer {
 	if asserted {
 		if pageHandler.IsNull() {
-			logger.Panic("pagePointerOf of null")
+			panic("pagePointerOf of null")
 		}
 	}
 	offset := pointer(pageHandler.PageIndex() << basePageSizeShiftNumber)
@@ -196,5 +191,5 @@ func (m Memory) Json() map[string]interface{} {
 }
 
 func (m Memory) String() string {
-	return serializer.Jsonify(m.Json())
+	return Jsonify(m.Json())
 }

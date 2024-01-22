@@ -1,10 +1,10 @@
-package managed_memory
+package direct
 
 import (
 	"fmt"
-	"gitlab.grandhoo.com/rock/storage/internal/logger"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -40,14 +40,13 @@ func (s String) Equal(s2 String) bool {
 }
 
 func isString[T any]() bool {
-	var v T
-	return reflect.TypeOf(v) == stringType
+	return reflect.TypeOf((*T)(nil)).Elem() == stringType
 }
 
 func equalString[str any](s1, s2 str) bool {
 	if asserted {
 		if !isString[str]() {
-			logger.Panic("call equalString using non-string type", s1, s2, fmt.Sprintf("%T", s1))
+			panic(fmt.Sprintf("call equalString using non-string type s1=%v, s2=%v, type(s2)=%T", s1, s2, fmt.Sprintf("%T", s1)))
 		}
 	}
 	return *((*string)(unsafe.Pointer(&s1))) == *((*string)(unsafe.Pointer(&s2)))
@@ -69,7 +68,7 @@ func (s String) Hashcode() (hash SizeType) {
 func hashString[str any](s str) SizeType {
 	if asserted {
 		if !isString[str]() {
-			logger.Panic("call hashString using non-string type", s, fmt.Sprintf("%T", s))
+			panic(fmt.Sprintf("call hashString using non-string type s=%v, type(s)=%T", s, fmt.Sprintf("%T", s)))
 		}
 	}
 	return ((*String)(unsafe.Pointer(&s))).Hashcode()
@@ -80,7 +79,26 @@ func (s String) String() string {
 }
 
 func (s String) Free(m *LocalMemory) {
-	s.holder.Free(m)
+	if s.holder.pointer().IsNotNull() {
+		header := s.holder.header()
+		cnt := atomic.AddInt32(pointerAs[int32](header.elementBasePointer), -1)
+		if debug {
+			fmt.Printf("free string %s in holder count %d\n", s.AsGoString(), cnt)
+		}
+		if cnt == 0 {
+			s.holder.Free(m)
+		}
+	}
+}
+
+func (s *String) Nove() (moved String) {
+	moved = *s
+	*s = emptyString
+	return moved
+}
+
+func (s String) Moved() bool {
+	return s == emptyString
 }
 
 var emptyString = String{}
@@ -88,6 +106,6 @@ var stringType = reflect.TypeOf(emptyString)
 
 func init() {
 	if Sizeof[String]()-Sizeof[Slice[byte]]() != Sizeof[string]() {
-		logger.Panic(fmt.Sprintf("string size is not correct %d %d", Sizeof[String](), Sizeof[word]()))
+		panic(fmt.Sprintf("string size is not correct %d %d", Sizeof[String](), Sizeof[word]()))
 	}
 }

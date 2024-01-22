@@ -1,67 +1,93 @@
-package managed_memory
+package direct
 
 import (
 	"fmt"
-	"gitlab.grandhoo.com/rock/storage/internal/logger"
-	"gitlab.grandhoo.com/rock/storage/storage2/utils/rpc/serializer"
+	"runtime"
 	"sync"
 )
 
 type LocalMemory struct {
-	localPages []PageHandler
-	proxy      Memory
-	mu         *sync.Mutex
-	noCopy     noCopy
+	localPages     []PageHandler
+	globalMemory   Memory
+	globalMemoryMu *sync.Mutex
+	noCopy         noCopy
 }
 
 var memoryLockerMap = make(map[Memory]*sync.Mutex)
 
 const localPoolCapacity = 64         // max capacity of localPages
 const maxAllocTimes = 4              // alloc pageNumber*maxAllocTimes page into local
-const maxAllocOncePageNumber = 40960 // max alloc a-40960 page once from proxy
+const maxAllocOncePageNumber = 40960 // max alloc a-40960 page once from globalMemory
 
 func (m Memory) NewConcurrentMemory() LocalMemory {
+	if asserted {
+		if _, ok := memoryLockerMap[m]; !ok {
+			panic(fmt.Sprintf("no mutex register to memory %s", m.String()))
+		}
+	}
 	return LocalMemory{
-		localPages: make([]PageHandler, 0, localPoolCapacity),
-		proxy:      m,
-		mu:         memoryLockerMap[m],
+		localPages:     make([]PageHandler, 0, localPoolCapacity),
+		globalMemory:   m,
+		globalMemoryMu: memoryLockerMap[m],
 	}
 }
 
 func (m *LocalMemory) NewConcurrentMemory() LocalMemory {
 	return LocalMemory{
-		localPages: make([]PageHandler, 0, localPoolCapacity),
-		proxy:      m.proxy,
-		mu:         memoryLockerMap[m.proxy],
+		localPages:     make([]PageHandler, 0, localPoolCapacity),
+		globalMemory:   m.globalMemory,
+		globalMemoryMu: m.globalMemoryMu,
 	}
 }
 
 func (m *LocalMemory) Destroy() {
 	if asserted {
-		if m.mu == nil {
-			logger.Panic("double free local-memory")
+		if m.globalMemoryMu == nil {
+			panic("double free local-memory")
 		}
 	}
-	m.mu.Lock()
+	m.globalMemoryMu.Lock()
 	for _, page := range m.localPages {
-		m.proxy.freePage(page)
+		m.globalMemory.freePage(page)
 	}
-	m.mu.Unlock()
-	m.localPages = m.localPages[:0]
+	m.globalMemoryMu.Unlock()
 	if asserted {
-		m.mu = nil
+		m.localPages = m.localPages[:0]
+		m.globalMemoryMu = nil
 	}
 }
 
-func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
+func (m *LocalMemory) allocPage(pageNumber SizeType, _type string, callerSkip int) (PageHandler, error) {
+	if trace {
+		pageHandler, err := m.allocPage0(pageNumber)
+		if err != nil {
+			return pageHandler, err
+		} else {
+			_, file, line, _ := runtime.Caller(callerSkip)
+			m.globalMemory.tracer().traceAlloc(m.pagePointerOf(pageHandler), _type, pageNumber*basePageSize, file, line)
+			return pageHandler, err
+		}
+	} else {
+		return m.allocPage0(pageNumber)
+	}
+}
+
+func (m *LocalMemory) freePage(pageHandler PageHandler) {
+	if trace {
+		m.globalMemory.tracer().deTraceAlloc(m.pagePointerOf(pageHandler))
+	}
+	m.freePage0(pageHandler)
+}
+
+func (m *LocalMemory) allocPage0(pageNumber SizeType) (PageHandler, error) {
 	if asserted {
-		if m.mu == nil {
-			logger.Panic("use a destroyed memory")
+		if m.globalMemoryMu == nil {
+			panic("use a destroyed memory")
 		}
 	}
 	if asserted {
 		if pageNumber == 0 {
-			logger.Panic("allocPage 0 pageNumber")
+			panic("allocPage 0 pageNumber")
 		}
 	}
 
@@ -88,22 +114,22 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	if localPageLength >= localPoolCapacity {
 		if asserted {
 			if localPageLength > localPoolCapacity {
-				logger.Panic(fmt.Sprintf("allocPage bad code %d %d", localPageLength, localPoolCapacity))
+				panic(fmt.Sprintf("allocPage bad code %d %d", localPageLength, localPoolCapacity))
 			}
 		}
-		m.Destroy()
+		for _, page := range m.localPages {
+			m.globalMemory.freePage(page)
+		}
+		m.localPages = m.localPages[:0]
 	}
 
-	/* ------------------------------ alloc from proxy ------------------------------ */
+	/* ------------------------------ alloc from globalMemory ------------------------------ */
 
 	if pageNumber >= maxAllocOncePageNumber {
 		// too big alloc
-		m.mu.Lock()
-		page, err := m.proxy.allocPage(pageNumber)
-		m.mu.Unlock()
-		if err != nil {
-			logger.Info("pageNumber", pageNumber, "localPages", m.localPages)
-		}
+		m.globalMemoryMu.Lock()
+		page, err := m.globalMemory.allocPage(pageNumber)
+		m.globalMemoryMu.Unlock()
 		return page, err
 	}
 
@@ -111,9 +137,9 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	var allocTimes = 0
 	var err error
 	var page PageHandler
-	m.mu.Lock()
+	m.globalMemoryMu.Lock()
 	for allocTimes < maxAllocTimes && totalAllocPageNumber < maxAllocOncePageNumber && len(m.localPages) < localPoolCapacity {
-		page, err = m.proxy.allocPage(pageNumber)
+		page, err = m.globalMemory.allocPage(pageNumber)
 		if err != nil {
 			break
 		}
@@ -121,39 +147,40 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 		allocTimes++
 		totalAllocPageNumber += pageNumber
 	}
-	m.mu.Unlock()
+	m.globalMemoryMu.Unlock()
 
 	last := len(m.localPages) - 1
 	if page.IsNull() {
 		if asserted {
 			if err == nil {
-				logger.Panic("bad code page.IsNull() and err == nil")
+				panic("bad code page.IsNull() and err == nil")
 			}
 		}
-		if last == -1 {
-			m.mu.Lock()
-			logger.Error(err, m.proxy.String())
-			m.mu.Unlock()
-			return nullPageHandle, err
-		}
-		if last >= 0 {
+		if allocTimes > 0 {
+			if asserted {
+				if last < 0 {
+					panic(fmt.Sprintf("bad code allocTimes(%d) > 0 but last(%d) < 0", allocTimes, last))
+				}
+			}
 			lastPage := m.localPages[last]
-			if lastPage.PageNumber() == pageNumber {
-				m.localPages = m.localPages[:last]
-				return lastPage, nil
-			} else {
-				logger.Panic("allocPage bad code lastPage.PageNumber(%d) < pageNumber(%d)", lastPage.PageNumber(), pageNumber)
-				return nullPageHandle, err
+			if asserted {
+				if lastPage.PageNumber() < pageNumber {
+					panic(fmt.Sprintf("bad code allocTimes(%d) > 0 but lastPage.PageNumber()(%d) < pageNumber(%d)",
+						allocTimes, lastPage.PageNumber(), pageNumber))
+				}
 			}
+			m.localPages = m.localPages[:last] // pop
+			return lastPage, nil
 		}
+		return nullPageHandle, err
 	}
 
 	if asserted {
 		if err != nil {
-			logger.Panic("bad code err is not nil", err, m.localPages)
+			panic(fmt.Sprint("bad code err is not nil", err, " ", m.localPages))
 		}
 		if last < 0 {
-			logger.Panic("last < 0", last, m.localPages)
+			panic(fmt.Sprint("last < 0", last, m.localPages))
 		}
 	}
 
@@ -161,7 +188,7 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	m.localPages = m.localPages[:last]
 	if asserted {
 		if lastPage.PageNumber() < pageNumber {
-			logger.Panic("allocPage bad code lastPage.PageNumber(%d) < pageNumber(%d)", lastPage.PageNumber(), pageNumber)
+			panic(fmt.Sprintf("allocPage bad code lastPage.PageNumber(%d) < pageNumber(%d)", lastPage.PageNumber(), pageNumber))
 		}
 	}
 
@@ -172,17 +199,14 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	//if allocPageFromProxy > maxAllocOncePageNumber {
 	//	allocPageFromProxy = maxAllocOncePageNumber
 	//}
-	//m.mu.Lock()
-	//page, err := m.proxy.allocPage(allocPageFromProxy)
-	//m.mu.Unlock()
+	//m.globalMemoryMu.Lock()
+	//page, err := m.globalMemory.allocPage(allocPageFromProxy)
+	//m.globalMemoryMu.Unlock()
 	//if err != nil {
 	//	// try itself
-	//	m.mu.Lock()
-	//	page, err = m.proxy.allocPage(pageNumber)
-	//	m.mu.Unlock()
-	//	if err != nil {
-	//		logger.Info(m.localPages)
-	//	}
+	//	m.globalMemoryMu.Lock()
+	//	page, err = m.globalMemory.allocPage(pageNumber)
+	//	m.globalMemoryMu.Unlock()
 	//	return page, err
 	//}
 
@@ -194,13 +218,13 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	//if localPageLength >= localPoolCapacity {
 	//	if asserted {
 	//		if localPageLength > localPoolCapacity {
-	//			logger.Panic(pretty.Sprintf("bad code %d %d", localPageLength, localPoolCapacity))
+	//			panic(pretty.Sprintf("bad code %d %d", localPageLength, localPoolCapacity))
 	//		}
 	//	}
 	//	last := localPageLength - 1
-	//	m.mu.Lock()
-	//	m.proxy.freePage(m.localPages[last])
-	//	m.mu.Unlock()
+	//	m.globalMemoryMu.Lock()
+	//	m.globalMemory.freePage(m.localPages[last])
+	//	m.globalMemoryMu.Unlock()
 	//	m.localPages[last] = remainPage
 	//} else {
 	//	m.localPages = append(m.localPages, remainPage)
@@ -208,24 +232,24 @@ func (m *LocalMemory) allocPage(pageNumber SizeType) (PageHandler, error) {
 	//return retPage, nil
 }
 
-func (m *LocalMemory) freePage(pageHandler PageHandler) {
+func (m *LocalMemory) freePage0(pageHandler PageHandler) {
 	if asserted {
-		if m.mu == nil {
-			logger.Panic("use a destroyed memory")
+		if m.globalMemoryMu == nil {
+			panic("use a destroyed memory")
 		}
 	}
 	if asserted {
 		if pageHandler.IsNull() {
-			logger.Panic("free null page")
+			panic("free null page")
 		}
 		libZero(m.pagePointerOf(pageHandler), pageHandler.Size())
 	}
 
 	// free too big
 	if pageHandler.PageNumber() > maxAllocOncePageNumber {
-		m.mu.Lock()
-		m.proxy.freePage(pageHandler)
-		m.mu.Unlock()
+		m.globalMemoryMu.Lock()
+		m.globalMemory.freePage(pageHandler)
+		m.globalMemoryMu.Unlock()
 		return
 	}
 
@@ -233,21 +257,21 @@ func (m *LocalMemory) freePage(pageHandler PageHandler) {
 	if localPageLength >= localPoolCapacity {
 		if asserted {
 			if localPageLength > localPoolCapacity {
-				logger.Panic(fmt.Sprintf("bad code localPageLength(%d) > localPoolCapacity(%d)", localPageLength, localPoolCapacity))
+				panic(fmt.Sprintf("bad code localPageLength(%d) > localPoolCapacity(%d)", localPageLength, localPoolCapacity))
 			}
 		}
 		last := localPageLength - 1
 		lastPage := m.localPages[last]
 
 		// free the smaller one
-		m.mu.Lock()
+		m.globalMemoryMu.Lock()
 		if pageHandler.PageNumber() < lastPage.PageNumber() {
-			m.proxy.freePage(pageHandler)
+			m.globalMemory.freePage(pageHandler)
 		} else {
-			m.proxy.freePage(lastPage)
+			m.globalMemory.freePage(lastPage)
 			m.localPages[last] = pageHandler
 		}
-		m.mu.Unlock()
+		m.globalMemoryMu.Unlock()
 		return
 	}
 
@@ -256,11 +280,11 @@ func (m *LocalMemory) freePage(pageHandler PageHandler) {
 }
 
 func (m *LocalMemory) pagePointerOf(pageHandler PageHandler) pointer {
-	return m.proxy.pagePointerOf(pageHandler)
+	return m.globalMemory.pagePointerOf(pageHandler)
 }
 
 func (m *LocalMemory) String() string {
-	return fmt.Sprintf("{localPages:%s}", serializer.Jsonify(m.localPages))
+	return fmt.Sprintf("{localPages:%s}", Jsonify(m.localPages))
 }
 
 type noCopy struct{}

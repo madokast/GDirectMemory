@@ -1,9 +1,7 @@
-package managed_memory
+package direct
 
 import (
 	"fmt"
-	"gitlab.grandhoo.com/rock/storage/internal/logger"
-	"gitlab.grandhoo.com/rock/storage/storage2/utils/rpc/serializer"
 	"math"
 	"unsafe"
 )
@@ -64,7 +62,7 @@ func (p PageHandler) Json() interface{} {
 }
 
 func (p PageHandler) String() string {
-	return serializer.Jsonify(p.Json())
+	return Jsonify(p.Json())
 }
 
 func (p pointer) UIntPtr() uintptr {
@@ -87,7 +85,7 @@ func (p pointer) String() string {
 	if p.IsNull() {
 		return "null"
 	}
-	return fmt.Sprintf("%x", p.UIntPtr())
+	return fmt.Sprintf("0x%X", p.UIntPtr())
 }
 
 func (s SizeType) UIntPtr() uintptr {
@@ -143,9 +141,9 @@ func Sizeof[T any]() SizeType {
 
 func init() {
 	if Sizeof[word]() < Sizeof[uintptr]() {
-		logger.Panic(fmt.Sprintf("word cannot hold a pointer %d %d", Sizeof[word](), Sizeof[uintptr]()))
+		panic(fmt.Sprintf("word cannot hold a pointer %d %d", Sizeof[word](), Sizeof[uintptr]()))
 	}
 	if Sizeof[word]() != wordSize {
-		logger.Panic(fmt.Sprintf("wordSize is not correct %d %d", Sizeof[word](), wordSize))
+		panic(fmt.Sprintf("wordSize is not correct %d %d", Sizeof[word](), wordSize))
 	}
 }
