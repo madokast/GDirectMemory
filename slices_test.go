@@ -26,12 +26,12 @@ func Test_sizeof1(t *testing.T) {
 func Test_newSlice(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	slice, err := MakeSlice[int32](&concurrentMemory, 10)
+	slice, err := MakeSlice[int32](&localMemory, 10)
 	PanicErr(err)
-	defer slice.Free(&concurrentMemory)
+	defer slice.Free(&localMemory)
 
 	t.Log(memory)
 	t.Log(Sizeof[sliceHeader]())
@@ -41,15 +41,15 @@ func Test_newSlice(t *testing.T) {
 func TestSlice_Get(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer func() { concurrentMemory.Destroy() }()
+	localMemory := memory.NewLocalMemory()
+	defer func() { localMemory.Destroy() }()
 
 	var s Slice[int32]
-	defer func() { s.Free(&concurrentMemory) }()
+	defer func() { s.Free(&localMemory) }()
 
-	PanicErr(s.Append(5, &concurrentMemory))
-	PanicErr(s.Append(2, &concurrentMemory))
-	PanicErr(s.Append(0, &concurrentMemory))
+	PanicErr(s.Append(5, &localMemory))
+	PanicErr(s.Append(2, &localMemory))
+	PanicErr(s.Append(0, &localMemory))
 
 	Assert(s.Get(0) == 5)
 	Assert(s.Get(1) == 2)
@@ -59,18 +59,18 @@ func TestSlice_Get(t *testing.T) {
 func TestSlice_Iterate(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	var s Slice[int32]
 	defer func() {
-		s.Free(&concurrentMemory)
-		t.Log(concurrentMemory.String())
+		s.Free(&localMemory)
+		t.Log(localMemory.String())
 	}()
 
-	PanicErr(s.Append(5, &concurrentMemory))
-	PanicErr(s.Append(2, &concurrentMemory))
-	PanicErr(s.Append(0, &concurrentMemory))
+	PanicErr(s.Append(5, &localMemory))
+	PanicErr(s.Append(2, &localMemory))
+	PanicErr(s.Append(0, &localMemory))
 
 	s.Iterate(func(i int32) {
 		t.Log(i)
@@ -84,41 +84,41 @@ func TestSlice_Iterate(t *testing.T) {
 func TestSlice_new2(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	var s Slice[int32]
-	PanicErr(s.Append(5, &concurrentMemory))
-	s.Free(&concurrentMemory)
+	PanicErr(s.Append(5, &localMemory))
+	s.Free(&localMemory)
 
 	s = 0
-	PanicErr(s.Append(5, &concurrentMemory))
-	s.Free(&concurrentMemory)
+	PanicErr(s.Append(5, &localMemory))
+	s.Free(&localMemory)
 }
 
 func Test_BenchmarkMySlice_Append(t *testing.T) {
 	memory := New(32 * 1024 * 1024)
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 	for i := 0; i < 10000; i++ {
 		var s Slice[int]
 		for j := 0; j < 100; j++ {
-			PanicErr(s.Append(j, &concurrentMemory))
+			PanicErr(s.Append(j, &localMemory))
 		}
-		s.Free(&concurrentMemory)
+		s.Free(&localMemory)
 	}
-	concurrentMemory.Destroy()
+	localMemory.Destroy()
 	memory.Free()
 }
 
 func Test_BenchmarkMySlice_make(t *testing.T) {
 	memory := New(32 * 1024 * 1024)
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 	for i := 0; i < 10000; i++ {
-		ss, _ := MakeSlice[string](&concurrentMemory, 1024)
-		_ = ss.Append("", &concurrentMemory)
-		ss.Free(&concurrentMemory)
+		ss, _ := MakeSlice[string](&localMemory, 1024)
+		_ = ss.Append("", &localMemory)
+		ss.Free(&localMemory)
 	}
-	concurrentMemory.Destroy()
+	localMemory.Destroy()
 	memory.Free()
 }
 
@@ -133,17 +133,17 @@ func BenchmarkSlice_Append(b *testing.B) {
 
 func BenchmarkMySlice_Append(b *testing.B) {
 	memory := New(32 * 1024 * 1024)
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var s Slice[int]
 		for j := 0; j < 100; j++ {
-			_ = s.Append(j, &concurrentMemory)
+			_ = s.Append(j, &localMemory)
 		}
-		s.Free(&concurrentMemory)
+		s.Free(&localMemory)
 	}
 	b.StopTimer()
-	concurrentMemory.Destroy()
+	localMemory.Destroy()
 	memory.Free()
 }
 
@@ -156,30 +156,30 @@ func BenchmarkSlice_make(b *testing.B) {
 
 func BenchmarkMySlice_make(b *testing.B) {
 	memory := New(32 * 1024 * 1024)
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ss, _ := MakeSlice[string](&concurrentMemory, 1024)
-		_ = ss.Append("", &concurrentMemory)
-		ss.Free(&concurrentMemory)
+		ss, _ := MakeSlice[string](&localMemory, 1024)
+		_ = ss.Append("", &localMemory)
+		ss.Free(&localMemory)
 	}
 	b.StopTimer()
-	concurrentMemory.Destroy()
+	localMemory.Destroy()
 	memory.Free()
 }
 
 func BenchmarkMySlice_make2(b *testing.B) {
 	memory := New(32 * 1024 * 1024)
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 	b.ResetTimer()
-	ss, _ := MakeSlice[string](&concurrentMemory, 1024)
-	_ = ss.Append("", &concurrentMemory)
+	ss, _ := MakeSlice[string](&localMemory, 1024)
+	_ = ss.Append("", &localMemory)
 	for i := 0; i < b.N; i++ {
 		ss.Set(0, "")
 	}
-	ss.Free(&concurrentMemory)
+	ss.Free(&localMemory)
 	b.StopTimer()
-	concurrentMemory.Destroy()
+	localMemory.Destroy()
 	memory.Free()
 }
 
@@ -206,13 +206,13 @@ func BenchmarkMySlice_make_parallel(b *testing.B) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			concurrentMemory := memory.NewLocalMemory()
+			localMemory := memory.NewLocalMemory()
 			for i := 0; i < b.N; i++ {
-				ss, _ := MakeSlice[string](&concurrentMemory, 1024)
-				_ = ss.Append("", &concurrentMemory)
-				ss.Free(&concurrentMemory)
+				ss, _ := MakeSlice[string](&localMemory, 1024)
+				_ = ss.Append("", &localMemory)
+				ss.Free(&localMemory)
 			}
-			concurrentMemory.Destroy()
+			localMemory.Destroy()
 		}()
 	}
 	wg.Wait()
@@ -227,13 +227,13 @@ func Test_BenchmarkMySlice_make_parallel(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			concurrentMemory := memory.NewLocalMemory()
+			localMemory := memory.NewLocalMemory()
 			for i := 0; i < 1000; i++ {
-				ss, _ := MakeSlice[string](&concurrentMemory, 1024)
-				_ = ss.Append("", &concurrentMemory)
-				ss.Free(&concurrentMemory)
+				ss, _ := MakeSlice[string](&localMemory, 1024)
+				_ = ss.Append("", &localMemory)
+				ss.Free(&localMemory)
 			}
-			concurrentMemory.Destroy()
+			localMemory.Destroy()
 		}()
 	}
 	wg.Wait()
@@ -243,12 +243,12 @@ func Test_BenchmarkMySlice_make_parallel(t *testing.T) {
 func TestMakeSliceWithLength(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	s, err := MakeSliceWithLength[int32](&concurrentMemory, 10)
+	s, err := MakeSliceWithLength[int32](&localMemory, 10)
 	PanicErr(err)
-	defer func() { s.Free(&concurrentMemory) }()
+	defer func() { s.Free(&localMemory) }()
 
 	Assert(s.Length() == 10, s.Length())
 	Assert(s.Capacity() >= 10, s.Capacity())
@@ -261,12 +261,12 @@ func TestMakeSliceWithLength(t *testing.T) {
 func TestSlice_String(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	s, err := MakeSliceWithLength[int32](&concurrentMemory, 10)
+	s, err := MakeSliceWithLength[int32](&localMemory, 10)
 	PanicErr(err)
-	defer func() { s.Free(&concurrentMemory) }()
+	defer func() { s.Free(&localMemory) }()
 
 	s.Set(0, 10)
 	s.Set(5, 520)
@@ -278,15 +278,15 @@ func TestSlice_String(t *testing.T) {
 func Test2DSlice_String(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	var ss Slice[Slice[int32]]
-	defer func() { ss.Free(&concurrentMemory) }()
+	defer func() { ss.Free(&localMemory) }()
 	{
-		s, err := MakeSliceWithLength[int32](&concurrentMemory, 10)
+		s, err := MakeSliceWithLength[int32](&localMemory, 10)
 		PanicErr(err)
-		defer func() { s.Free(&concurrentMemory) }()
+		defer func() { s.Free(&localMemory) }()
 
 		s.Set(0, 10)
 		s.Set(5, 520)
@@ -294,20 +294,20 @@ func Test2DSlice_String(t *testing.T) {
 
 		t.Log(s)
 
-		PanicErr(ss.Append(s, &concurrentMemory))
+		PanicErr(ss.Append(s, &localMemory))
 	}
 
 	{
-		s, err := MakeSliceWithLength[int32](&concurrentMemory, 5)
+		s, err := MakeSliceWithLength[int32](&localMemory, 5)
 		PanicErr(err)
-		defer func() { s.Free(&concurrentMemory) }()
+		defer func() { s.Free(&localMemory) }()
 
 		s.Set(1, 4)
 		s.Set(3, 8)
 
 		t.Log(s)
 
-		PanicErr(ss.Append(s, &concurrentMemory))
+		PanicErr(ss.Append(s, &localMemory))
 	}
 
 	t.Log(ss)
@@ -315,21 +315,21 @@ func Test2DSlice_String(t *testing.T) {
 
 func TestIntersection(t *testing.T) {
 	memory := New(1 * MB)
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 
 	var intersection Slice[Slice[Slice[int32]]]
 
 	var err error
 	for i := 0; i < 3; i++ {
 		t.Log("before", intersection)
-		//intersection, err = calIntersection(intersection, &concurrentMemory)
-		intersection, err = calIntersectionParallel(intersection, &concurrentMemory)
+		//intersection, err = calIntersection(intersection, &localMemory)
+		intersection, err = calIntersectionParallel(intersection, &localMemory)
 		PanicErr(err)
 		t.Log("after", intersection)
 	}
 
-	freeIntersection(intersection, &concurrentMemory)
-	concurrentMemory.Destroy()
+	freeIntersection(intersection, &localMemory)
+	localMemory.Destroy()
 	memory.Free()
 }
 
@@ -505,11 +505,11 @@ func generatePredicateIntersection(m *LocalMemory) (Slice[Slice[Slice[int32]]], 
 func TestMakeSliceFromGoSlice(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, []string{"hello", ", ", "world", "!"}))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, []string{"hello", ", ", "world", "!"}))
+	defer func() { ss.Free(&localMemory) }()
 
 	t.Log(ss)
 }
@@ -517,16 +517,16 @@ func TestMakeSliceFromGoSlice(t *testing.T) {
 func TestMakeSliceFromGoSlice1000(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	var temp []int
 	for i := 0; i < 1000; i++ {
 		temp = append(temp, rand.Int())
 	}
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, temp))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, temp))
+	defer func() { ss.Free(&localMemory) }()
 
 	if len(temp) != int(ss.Length()) {
 		panic(fmt.Sprintf("%d != %d", len(temp), int(ss.Length())))
@@ -542,12 +542,12 @@ func TestMakeSliceFromGoSlice1000(t *testing.T) {
 func TestMakeSliceFromGoSliceEmpty(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	var temp []string
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, temp))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, temp))
+	defer func() { ss.Free(&localMemory) }()
 
 	t.Log(ss)
 }
@@ -555,41 +555,41 @@ func TestMakeSliceFromGoSliceEmpty(t *testing.T) {
 func TestSlice_Copy(t *testing.T) {
 	memory := New(4 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, []string{"hello", ", ", "world", "!"}))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, []string{"hello", ", ", "world", "!"}))
+	defer func() { ss.Free(&localMemory) }()
 
 	t.Log(ss)
 
-	ss2, err := ss.Copy(&concurrentMemory)
+	ss2, err := ss.Copy(&localMemory)
 	PanicErr(err)
-	defer func() { ss2.Free(&concurrentMemory) }()
+	defer func() { ss2.Free(&localMemory) }()
 	t.Log(ss2)
 }
 
 func TestMakeSliceCopy1000(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	var temp []int
 	for i := 0; i < 1000; i++ {
 		temp = append(temp, rand.Int())
 	}
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, temp))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, temp))
+	defer func() { ss.Free(&localMemory) }()
 
 	if len(temp) != int(ss.Length()) {
 		panic(fmt.Sprintf("%d != %d", len(temp), int(ss.Length())))
 	}
 
-	ss2, err := ss.Copy(&concurrentMemory)
+	ss2, err := ss.Copy(&localMemory)
 	PanicErr(err)
-	defer func() { ss2.Free(&concurrentMemory) }()
+	defer func() { ss2.Free(&localMemory) }()
 
 	if len(temp) != int(ss2.Length()) {
 		panic(fmt.Sprintf("%d != %d", len(temp), int(ss2.Length())))
@@ -610,15 +610,15 @@ func TestMakeSliceCopy1000(t *testing.T) {
 func TestSlice_AppendBatch(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, []int{1, 2, 3}))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, []int{1, 2, 3}))
+	defer func() { ss.Free(&localMemory) }()
 
 	var s2 Slice[int]
-	defer func() { s2.Free(&concurrentMemory) }()
-	err := s2.AppendBatch(ss, &concurrentMemory)
+	defer func() { s2.Free(&localMemory) }()
+	err := s2.AppendBatch(ss, &localMemory)
 	PanicErr(err)
 
 	t.Log(ss)
@@ -628,17 +628,17 @@ func TestSlice_AppendBatch(t *testing.T) {
 func TestSlice_AppendBatch2(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, []int{1, 2, 3}))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, []int{1, 2, 3}))
+	defer func() { ss.Free(&localMemory) }()
 
 	var s2 Slice[int]
-	defer func() { s2.Free(&concurrentMemory) }()
-	err := s2.AppendBatch(ss, &concurrentMemory)
+	defer func() { s2.Free(&localMemory) }()
+	err := s2.AppendBatch(ss, &localMemory)
 	PanicErr(err)
-	err = s2.AppendBatch(ss, &concurrentMemory)
+	err = s2.AppendBatch(ss, &localMemory)
 	PanicErr(err)
 
 	t.Log(ss)
@@ -648,13 +648,13 @@ func TestSlice_AppendBatch2(t *testing.T) {
 func TestSlice_AppendBatchSelf(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, []int{1, 2, 3}))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, []int{1, 2, 3}))
+	defer func() { ss.Free(&localMemory) }()
 
-	err := ss.AppendBatch(ss, &concurrentMemory)
+	err := ss.AppendBatch(ss, &localMemory)
 	PanicErr(err)
 
 	t.Log(ss)
@@ -663,18 +663,18 @@ func TestSlice_AppendBatchSelf(t *testing.T) {
 func TestSlice_AppendBatch1000(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewLocalMemory()
-	defer concurrentMemory.Destroy()
+	localMemory := memory.NewLocalMemory()
+	defer localMemory.Destroy()
 
 	gs := make([]int, 500)
 	for i := range gs {
 		gs[i] = 22
 	}
 
-	var ss = PanicErr1(MakeSliceFromGoSlice(&concurrentMemory, gs))
-	defer func() { ss.Free(&concurrentMemory) }()
+	var ss = PanicErr1(MakeSliceFromGoSlice(&localMemory, gs))
+	defer func() { ss.Free(&localMemory) }()
 
-	err := ss.AppendBatch(ss, &concurrentMemory)
+	err := ss.AppendBatch(ss, &localMemory)
 	PanicErr(err)
 	t.Log(ss.Length())
 	Assert(ss.Length() == 1000)

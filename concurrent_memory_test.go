@@ -4,24 +4,24 @@ import (
 	"testing"
 )
 
-func TestConcurrentMemory(t *testing.T) {
+func TestlocalMemory(t *testing.T) {
 	memory := New(4096)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewLocalMemory()
+	localMemory := memory.NewLocalMemory()
 	defer func() {
-		t.Log(concurrentMemory.localPages)
-		concurrentMemory.Destroy()
+		t.Log(localMemory.localPages)
+		localMemory.Destroy()
 		t.Log(memory)
 	}()
 
-	page, err := concurrentMemory.allocPage(5, "test", 1)
+	page, err := localMemory.allocPage(5, "test", 1)
 	PanicErr(err)
 	t.Log(page)
-	concurrentMemory.freePage(page)
+	localMemory.freePage(page)
 
-	page, err = concurrentMemory.allocPage(2, "test", 1)
+	page, err = localMemory.allocPage(2, "test", 1)
 	PanicErr(err)
 	t.Log(page)
-	concurrentMemory.freePage(page)
+	localMemory.freePage(page)
 }
