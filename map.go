@@ -54,7 +54,7 @@ func MakeMapFromGoMap[Key comparable, Value any](gm map[Key]Value, mem *LocalMem
 		m, err = makeCustomMap0[Key, Value](SizeType(len(gm)), hashString[Key], equalString[Key], mem, 5)
 	} else {
 		var k Key
-		str := fmt.Sprintf("%T is not simle type. Use MakeCustomMap", k)
+		str := fmt.Sprintf("%T is not simple type. Use MakeCustomMap", k)
 		return nilMap, errors.New(str)
 	}
 	if err != nil {
