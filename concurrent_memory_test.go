@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestlocalMemory(t *testing.T) {
+func TestLocalMemory(t *testing.T) {
 	memory := New(4096)
 	defer memory.Free()
 
