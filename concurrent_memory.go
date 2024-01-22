@@ -19,7 +19,7 @@ const localPoolCapacity = 64         // max capacity of localPages
 const maxAllocTimes = 4              // alloc pageNumber*maxAllocTimes page into local
 const maxAllocOncePageNumber = 40960 // max alloc a-40960 page once from globalMemory
 
-func (m Memory) NewConcurrentMemory() LocalMemory {
+func (m Memory) NewLocalMemory() LocalMemory {
 	if asserted {
 		if _, ok := memoryLockerMap[m]; !ok {
 			panic(fmt.Sprintf("no mutex register to memory %s", m.String()))
@@ -32,7 +32,7 @@ func (m Memory) NewConcurrentMemory() LocalMemory {
 	}
 }
 
-func (m *LocalMemory) NewConcurrentMemory() LocalMemory {
+func (m *LocalMemory) NewLocalMemory() LocalMemory {
 	return LocalMemory{
 		localPages:     make([]PageHandler, 0, localPoolCapacity),
 		globalMemory:   m.globalMemory,

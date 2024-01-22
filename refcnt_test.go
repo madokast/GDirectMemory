@@ -7,7 +7,7 @@ import (
 func TestSharedFactory_MakeShared(t *testing.T) {
 	memory := New(1 * MB)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMapFromGoMap(map[int]int{123: 546}, &concurrentMemory)
@@ -31,7 +31,7 @@ func TestSharedFactory_MakeShared(t *testing.T) {
 func TestSharedFactory_MakeShared2(t *testing.T) {
 	memory := New(1 * MB)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMapFromGoMap(map[int]int{123: 546}, &concurrentMemory)

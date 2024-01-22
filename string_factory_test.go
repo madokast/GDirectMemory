@@ -10,7 +10,7 @@ func TestNewStringFactory(t *testing.T) {
 	memory := New(1 * MB)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
@@ -32,7 +32,7 @@ func TestString_Hashcode(t *testing.T) {
 	memory := New(1 * MB)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
@@ -62,7 +62,7 @@ func TestStringFactory_CreateFromGoString(t *testing.T) {
 	memory := New(1 * MB)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
@@ -92,7 +92,7 @@ func TestStringFactory_CreateFromGoString1000(t *testing.T) {
 	memory := New(128 * MB)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()
@@ -120,7 +120,7 @@ func TestStringFactory_CreateFromGoString_bigString(t *testing.T) {
 	memory := New(16 * MB)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	factory := NewStringFactory()

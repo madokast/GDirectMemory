@@ -10,7 +10,7 @@ import (
 func TestMakeMap(t *testing.T) {
 	memory := New(1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMap[int, string](8, &concurrentMemory)
@@ -44,7 +44,7 @@ func TestMakeMap(t *testing.T) {
 func TestMapCorrect(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	const sz = 100_0000
@@ -90,7 +90,7 @@ func BenchmarkMapGet(b *testing.B) {
 func BenchmarkMyMapGet(b *testing.B) {
 	memory := New(128 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	const sz = 100_0000
@@ -114,7 +114,7 @@ func BenchmarkMyMapGet(b *testing.B) {
 func BenchmarkMyCustomMapGet(b *testing.B) {
 	memory := New(128 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	const sz = 100_0000
@@ -159,7 +159,7 @@ func BenchmarkStringMapGet(b *testing.B) {
 func BenchmarkMyStringMapGet(b *testing.B) {
 	memory := New(1 * GB)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 	factory := NewStringFactory()
 	defer factory.Destroy(&concurrentMemory)
@@ -203,7 +203,7 @@ func BenchmarkMapPutGetExpense(b *testing.B) {
 func BenchmarkMyMapPutGetExpense(b *testing.B) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	b.ResetTimer()
@@ -263,7 +263,7 @@ func BenchmarkSimpleHashInt(b *testing.B) {
 func TestMap_Link(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeCustomMap[int, int](0, func(key int) SizeType {
@@ -289,7 +289,7 @@ func TestMap_Link(t *testing.T) {
 func TestMap_Delete(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	for i := 1; i <= 5; i++ {
@@ -334,7 +334,7 @@ func TestMap_Delete(t *testing.T) {
 func TestMap_Delete2(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	for i := 1; i <= 5; i++ {
@@ -385,7 +385,7 @@ func TestMap_Delete2(t *testing.T) {
 func TestMap_Delete0(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	for i := 1; i <= 5; i++ {
@@ -425,7 +425,7 @@ func TestMap_Delete0(t *testing.T) {
 func TestMap_PutGetDelete(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMap[int, int](0, &concurrentMemory)
@@ -488,7 +488,7 @@ func TestMap_PutGetDelete(t *testing.T) {
 func TestMap_float64Key(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMap[float64, int](0, &concurrentMemory)
@@ -510,7 +510,7 @@ func TestMap_float64Key(t *testing.T) {
 func TestMap_Iterator(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMap[int, int](0, &concurrentMemory)
@@ -528,7 +528,7 @@ func TestMap_Iterator(t *testing.T) {
 func TestMap_Iterator2(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeCustomMap[int, int](0, func(key int) SizeType {
@@ -552,7 +552,7 @@ func TestMap_Iterator2(t *testing.T) {
 func TestMap_Iterator3(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeCustomMap[int, int](0, func(key int) SizeType {
@@ -576,7 +576,7 @@ func TestMap_Iterator3(t *testing.T) {
 func TestMap_Iterator4(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	const sz = 100_0000
@@ -612,7 +612,7 @@ func TestMap_Iterator4(t *testing.T) {
 func TestMap_Move(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMap[int, int](0, &concurrentMemory)
@@ -626,7 +626,7 @@ func TestMap_Move(t *testing.T) {
 func TestMap_Move2(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	m, err := MakeMap[int, int](0, &concurrentMemory)
@@ -638,7 +638,7 @@ func TestMap_Move2(t *testing.T) {
 
 func TestMap_Move3(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	m, err := MakeMap[int, int](0, &concurrentMemory)
 	PanicErr(err)
 
@@ -689,7 +689,7 @@ func Test_isMap(t *testing.T) {
 func TestMap_MapMap(t *testing.T) {
 	memory := New(256 * 1024 * 1024)
 	defer memory.Free()
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer concurrentMemory.Destroy()
 
 	mm, err := MakeMap[int, Map[int, int]](0, &concurrentMemory)

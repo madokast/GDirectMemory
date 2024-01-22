@@ -8,7 +8,7 @@ func TestConcurrentMemory(t *testing.T) {
 	memory := New(4096)
 	defer memory.Free()
 
-	concurrentMemory := memory.NewConcurrentMemory()
+	concurrentMemory := memory.NewLocalMemory()
 	defer func() {
 		t.Log(concurrentMemory.localPages)
 		concurrentMemory.Destroy()
