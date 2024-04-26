@@ -1,62 +1,83 @@
-package direct
+package memory
 
 import (
 	"fmt"
+	"github.com/madokast/direct/memory/trace_type"
+	"github.com/madokast/direct/utils"
 	"strings"
 	"sync"
 )
 
 /**
-A tracer records every alloc/free point.
+A Tracer records every alloc/free point.
 Used only for leak detection.
 Bad performance.
 */
 
-const trace = true
+const Trace = true
 
 type traceRecord struct {
-	file   string
-	lineNo int
-	size   SizeType
-	_type  string
+	pageIndex SizeType
+	file      string
+	lineNo    int
+	size      SizeType
+	_type     trace_type.Type
 }
 
 type tracer struct {
 	traceMu      sync.Mutex
-	traceRecords map[pointer]traceRecord
+	traceRecords map[Pointer]traceRecord
+	memory       Memory
 }
 
-func newTrace() *tracer {
+func newTrace(m Memory) *tracer {
 	return &tracer{
 		traceMu:      sync.Mutex{},
-		traceRecords: map[pointer]traceRecord{},
+		traceRecords: map[Pointer]traceRecord{},
+		memory:       m,
 	}
 }
 
-func (t *tracer) traceAlloc(ptr pointer, _type string, size SizeType, file string, lineNo int) {
+func (t *tracer) TraceAlloc(ptr Pointer, _type trace_type.Type, size SizeType, file string, lineNo int) {
+	if !utils.Asserted {
+		if trace_type.SkipTrace(_type) {
+			return
+		}
+	}
+
 	t.traceMu.Lock()
-	if asserted {
+	if utils.Asserted {
 		tr, ok := t.traceRecords[ptr]
 		if ok {
 			panic(fmt.Sprintf("pointer %s has been traced as %s", ptr.String(), tr.String()))
 		}
 	}
+
 	t.traceRecords[ptr] = traceRecord{
-		file:   file,
-		lineNo: lineNo,
-		size:   size,
-		_type:  _type,
+		pageIndex: t.memory.PointerToPageIndex(ptr),
+		file:      file,
+		lineNo:    lineNo,
+		size:      size,
+		_type:     _type,
+	}
+	if utils.Debug {
+		record := t.traceRecords[ptr]
+		fmt.Println("trace", ptr, record.String())
 	}
 	t.traceMu.Unlock()
 }
 
-func (t *tracer) deTraceAlloc(ptr pointer) {
+func (t *tracer) DeTraceAlloc(ptr Pointer) {
 	t.traceMu.Lock()
-	if asserted {
+	if utils.Asserted {
 		_, ok := t.traceRecords[ptr]
 		if !ok {
 			panic(fmt.Sprintf("remove a un-traced pointer %s", ptr.String()))
 		}
+	}
+	if utils.Debug {
+		record := t.traceRecords[ptr]
+		fmt.Println("de-trace", ptr, record.String())
 	}
 	delete(t.traceRecords, ptr)
 	t.traceMu.Unlock()
@@ -65,7 +86,7 @@ func (t *tracer) deTraceAlloc(ptr pointer) {
 func (t *tracer) cleanTrace() {
 	t.traceMu.Lock()
 	defer t.traceMu.Unlock()
-	t.traceRecords = make(map[pointer]traceRecord)
+	t.traceRecords = make(map[Pointer]traceRecord)
 }
 
 func (t *tracer) hasLeak() bool {
@@ -86,7 +107,7 @@ func (t *tracer) leakReport() string {
 }
 
 func (tr *traceRecord) String() string {
-	return fmt.Sprintf("type:%s size:%s allocated at %s:%d", tr._type, humanFriendlyMemorySize(tr.size), tr.file, tr.lineNo)
+	return fmt.Sprintf("index:%d type:%s size:%s allocated at %s:%d", tr.pageIndex, tr._type, HumanFriendlyMemorySize(tr.size), tr.file, tr.lineNo)
 }
 
 /*--------------------- trace user -------------------*/
@@ -94,46 +115,46 @@ func (tr *traceRecord) String() string {
 var tracerMapMu sync.Mutex
 var tracerMap = map[Memory]*tracer{}
 
-func (m Memory) tracer() *tracer {
-	if !trace {
-		panic("call tracer() after testing trace flag")
+func (m Memory) Tracer() *tracer {
+	if !Trace {
+		panic("call Tracer() after testing trace flag")
 	}
 	tracerMapMu.Lock()
 	t := tracerMap[m]
 	tracerMapMu.Unlock()
-	if asserted {
+	if utils.Asserted {
 		if t == nil {
-			panic("tracer is not init")
+			panic("Tracer is not init")
 		}
 	}
 	return t
 }
 
 func (m Memory) startTrace() {
-	if trace {
-		if asserted {
+	if Trace {
+		if utils.Asserted {
 			tracerMapMu.Lock()
 			_, ok := tracerMap[m]
 			tracerMapMu.Unlock()
 			if ok {
-				panic("a tracer has been attached to the memory")
+				panic("a Tracer has been attached to the memory")
 			}
 		}
 
 		tracerMapMu.Lock()
-		tracerMap[m] = newTrace()
+		tracerMap[m] = newTrace(m)
 		tracerMapMu.Unlock()
 	}
 }
 
 func (m Memory) deleteTracer() {
-	if trace {
-		if asserted {
+	if Trace {
+		if utils.Asserted {
 			tracerMapMu.Lock()
 			_, ok := tracerMap[m]
 			tracerMapMu.Unlock()
 			if !ok {
-				panic("no tracer attaches to the memory")
+				panic("no Tracer attaches to the memory")
 			}
 		}
 

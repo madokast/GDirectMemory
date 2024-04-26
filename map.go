@@ -3,12 +3,15 @@ package direct
 import (
 	"errors"
 	"fmt"
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/memory/trace_type"
+	"github.com/madokast/direct/utils"
 	"reflect"
 	"strings"
 	"sync"
 )
 
-type Map[Key comparable, Value any] pointer
+type Map[Key comparable, Value any] memory.Pointer
 
 var userDefinedHashEqualFuncSetMu sync.Mutex
 var userDefinedHashEqualFuncSet = map[reflect.Value]int{} // funcVal->objRefCnt prevents GC
@@ -16,13 +19,13 @@ var userDefinedHashEqualFuncSet = map[reflect.Value]int{} // funcVal->objRefCnt 
 type mapHeader[Key comparable, Value any] struct {
 	table             Slice[entry[Key, Value]] // hashTable + list
 	tableLength       SizeType
-	tableBasePtr      pointer
+	tableBasePtr      memory.Pointer
 	count             SizeType
 	mask              SizeType
 	free              SizeType
 	hash              func(Key) SizeType
 	equal             func(Key, Key) bool
-	headerPageHandler PageHandler // for free
+	headerPageHandler memory.PageHandler // for free
 }
 
 type entry[Key comparable, Value any] struct {
@@ -35,11 +38,11 @@ const nilMap = 0
 const emptyTableFlag = 0 // a slot in table is empty is entry.next = emptyTableFlag
 const listTailFlag = 1   // a slot is the tail of list if entry.next = listTailFlag
 
-func MakeMap[Key comparable, Value any](capacity SizeType, m *LocalMemory) (Map[Key, Value], error) {
+func MakeMap[Key comparable, Value any](capacity SizeType) (Map[Key, Value], error) {
 	if isSimpleType[Key]() {
-		return makeCustomMap0[Key, Value](capacity, simpleHash[Key], simpleEqual[Key], m, 5)
+		return makeCustomMap0[Key, Value](capacity, simpleHash[Key], simpleEqual[Key], 3)
 	} else if isString[Key]() {
-		return makeCustomMap0[Key, Value](capacity, hashString[Key], equalString[Key], m, 5)
+		return makeCustomMap0[Key, Value](capacity, hashString[Key], equalString[Key], 3)
 	} else {
 		var k Key
 		str := fmt.Sprintf("%T is not simple type. Use MakeCustomMap", k)
@@ -47,11 +50,11 @@ func MakeMap[Key comparable, Value any](capacity SizeType, m *LocalMemory) (Map[
 	}
 }
 
-func MakeMapFromGoMap[Key comparable, Value any](gm map[Key]Value, mem *LocalMemory) (m Map[Key, Value], err error) {
+func MakeMapFromGoMap[Key comparable, Value any](gm map[Key]Value) (m Map[Key, Value], err error) {
 	if isSimpleType[Key]() {
-		m, err = makeCustomMap0[Key, Value](SizeType(len(gm)), simpleHash[Key], simpleEqual[Key], mem, 5)
+		m, err = makeCustomMap0[Key, Value](SizeType(len(gm)), simpleHash[Key], simpleEqual[Key], 3)
 	} else if isString[Key]() {
-		m, err = makeCustomMap0[Key, Value](SizeType(len(gm)), hashString[Key], equalString[Key], mem, 5)
+		m, err = makeCustomMap0[Key, Value](SizeType(len(gm)), hashString[Key], equalString[Key], 3)
 	} else {
 		var k Key
 		str := fmt.Sprintf("%T is not simple type. Use MakeCustomMap", k)
@@ -66,12 +69,12 @@ func MakeMapFromGoMap[Key comparable, Value any](gm map[Key]Value, mem *LocalMem
 	return m, nil
 }
 
-func MakeCustomMap[Key comparable, Value any](capacity SizeType, hash func(Key) SizeType, equal func(key1, key2 Key) bool, mem *LocalMemory) (Map[Key, Value], error) {
-	return makeCustomMap0[Key, Value](capacity, hash, equal, mem, 5)
+func MakeCustomMap[Key comparable, Value any](capacity SizeType, hash func(Key) SizeType, equal func(key1 Key, key2 Key) bool) (Map[Key, Value], error) {
+	return makeCustomMap0[Key, Value](capacity, hash, equal, 3)
 }
 
-func makeCustomMap0[Key comparable, Value any](capacity SizeType, hash func(Key) SizeType, equal func(Key, Key) bool, mem *LocalMemory, traceSkip int) (Map[Key, Value], error) {
-	if asserted {
+func makeCustomMap0[Key comparable, Value any](capacity SizeType, hash func(Key) SizeType, equal func(Key, Key) bool, traceSkip int) (Map[Key, Value], error) {
+	if utils.Asserted {
 		if hash == nil {
 			panic("hash function is nil")
 		}
@@ -85,16 +88,16 @@ func makeCustomMap0[Key comparable, Value any](capacity SizeType, hash func(Key)
 	}
 	normalizeCap <<= 1 // enlarge once again because a test encounters capacity expansion.
 
-	table, err := makeSliceWithLength0[entry[Key, Value]](mem, normalizeCap, "MapTable", traceSkip) // <<= 1 for link space
+	table, err := makeSliceWithLength0[entry[Key, Value]](normalizeCap, trace_type.MapTable, traceSkip+2) // <<= 1 for link space
 	if err != nil {
 		return nilMap, err
 	}
-	pageMapHeader, err := mem.allocPage(1, "MapHeader", 3)
+	pageMapHeader, err := Global.allocPage(1, trace_type.MapHeader, traceSkip)
 	if err != nil {
-		table.Free(mem)
+		table.Free()
 		return nilMap, err
 	}
-	var theMap = Map[Key, Value](mem.pagePointerOf(pageMapHeader))
+	var theMap = Map[Key, Value](Global.pagePointerOf(pageMapHeader))
 	header := theMap.header()
 
 	header.table = table
@@ -111,8 +114,8 @@ func makeCustomMap0[Key comparable, Value any](capacity SizeType, hash func(Key)
 	return theMap, nil
 }
 
-func (m Map[Key, Value]) Put(k Key, v Value, mem *LocalMemory) error {
-	err := m.checkCapacity(1, mem)
+func (m Map[Key, Value]) Put(k Key, v Value) error {
+	err := m.checkCapacity(1)
 	if err != nil {
 		return err
 	}
@@ -171,8 +174,8 @@ func (m Map[Key, Value]) Put(k Key, v Value, mem *LocalMemory) error {
 }
 
 // DirectPut asserts no replacement
-func (m Map[Key, Value]) DirectPut(k Key, v Value, mem *LocalMemory) error {
-	err := m.checkCapacity(1, mem)
+func (m Map[Key, Value]) DirectPut(k Key, v Value) error {
+	err := m.checkCapacity(1)
 	if err != nil {
 		return err
 	}
@@ -189,7 +192,7 @@ func (m Map[Key, Value]) DirectPut(k Key, v Value, mem *LocalMemory) error {
 		header.count++
 		return nil
 	} else if next == listTailFlag { // only one, no link
-		if asserted {
+		if utils.Asserted {
 			if header.equal(slot.key, k) {
 				panic(fmt.Sprintf("DirectPut faces duplicated key %v value %v, %v", slot.key, slot.value, v))
 			}
@@ -204,14 +207,14 @@ func (m Map[Key, Value]) DirectPut(k Key, v Value, mem *LocalMemory) error {
 		header.count++
 		return nil
 	} else { // has next
-		if asserted {
+		if utils.Asserted {
 			if header.equal(slot.key, k) {
 				panic(fmt.Sprintf("DirectPut faces duplicated key %v value %v, %v", slot.key, slot.value, v))
 			}
 		}
 		for {
 			slot = header.dataAt(next)
-			if asserted {
+			if utils.Asserted {
 				if header.equal(slot.key, k) {
 					panic(fmt.Sprintf("DirectPut faces duplicated key %v value %v, %v", slot.key, slot.value, v))
 				}
@@ -234,13 +237,13 @@ func (m Map[Key, Value]) DirectPut(k Key, v Value, mem *LocalMemory) error {
 
 // directPutNoGrow asserts no replacement and no grow-capacity
 func (m Map[Key, Value]) directPutNoGrow(k Key, v Value) {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
 	}
 	header := m.header()
-	if asserted {
+	if utils.Asserted {
 		if header.table == nullSlice {
 			panic("use a moved or freed or null map")
 		}
@@ -260,7 +263,7 @@ func (m Map[Key, Value]) directPutNoGrow(k Key, v Value) {
 		header.count++
 		return
 	} else if next == listTailFlag { // only one, no link
-		if asserted {
+		if utils.Asserted {
 			if header.equal(slot.key, k) {
 				panic(fmt.Sprintf("DirectPut faces duplicated key %v value %v, %v", slot.key, slot.value, v))
 			}
@@ -275,14 +278,14 @@ func (m Map[Key, Value]) directPutNoGrow(k Key, v Value) {
 		header.count++
 		return
 	} else { // has next
-		if asserted {
+		if utils.Asserted {
 			if header.equal(slot.key, k) {
 				panic(fmt.Sprintf("DirectPut faces duplicated key %v value %v, %v", slot.key, slot.value, v))
 			}
 		}
 		for {
 			slot = header.dataAt(next)
-			if asserted {
+			if utils.Asserted {
 				if header.equal(slot.key, k) {
 					panic(fmt.Sprintf("DirectPut faces duplicated key %v value %v, %v", slot.key, slot.value, v))
 				}
@@ -304,13 +307,13 @@ func (m Map[Key, Value]) directPutNoGrow(k Key, v Value) {
 }
 
 func (m Map[Key, Value]) Get2(k Key) (val Value, ok bool) {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
 	}
 	header := m.header()
-	if asserted {
+	if utils.Asserted {
 		if header.table == nullSlice {
 			panic("use a moved or freed or null map")
 		}
@@ -345,13 +348,13 @@ func (m Map[Key, Value]) Get2(k Key) (val Value, ok bool) {
 }
 
 func (m Map[Key, Value]) Get(k Key) (val Value) {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
 	}
 	header := m.header()
-	if asserted {
+	if utils.Asserted {
 		if header.table == nullSlice {
 			panic("use a moved or freed or null map")
 		}
@@ -386,13 +389,13 @@ func (m Map[Key, Value]) Get(k Key) (val Value) {
 }
 
 func (m Map[Key, Value]) Delete(k Key) {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
 	}
 	header := m.header()
-	if asserted {
+	if utils.Asserted {
 		if header.table == nullSlice {
 			panic("use a moved or freed or null map")
 		}
@@ -446,7 +449,7 @@ func (m Map[Key, Value]) Delete(k Key) {
 }
 
 func (m Map[Key, Value]) Length() int {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
@@ -456,12 +459,12 @@ func (m Map[Key, Value]) Length() int {
 }
 
 func (mh *mapHeader[Key, Value]) dataAt(index SizeType) *entry[Key, Value] {
-	if asserted {
+	if utils.Asserted {
 		if index >= mh.tableLength {
 			panic(fmt.Sprintf("Map table out of bound(%d, %d)", index, mh.tableLength))
 		}
 	}
-	return pointerAs[entry[Key, Value]](mh.tableBasePtr + pointer(index*Sizeof[entry[Key, Value]]()))
+	return memory.PointerAs[entry[Key, Value]](mh.tableBasePtr + memory.Pointer(index*memory.Sizeof[entry[Key, Value]]()))
 }
 
 func (mh *mapHeader[Key, Value]) hashEqualRefCtrl(cnt int) {
@@ -472,7 +475,7 @@ func (mh *mapHeader[Key, Value]) hashEqualRefCtrl(cnt int) {
 	{
 		hashCnt := userDefinedHashEqualFuncSet[hashVal] + cnt
 		if hashCnt <= 0 {
-			if asserted {
+			if utils.Asserted {
 				if hashCnt < 0 {
 					panic("bad code: hashCnt < 0")
 				}
@@ -485,7 +488,7 @@ func (mh *mapHeader[Key, Value]) hashEqualRefCtrl(cnt int) {
 	{
 		equalCnt := userDefinedHashEqualFuncSet[equalVal] + cnt
 		if equalCnt <= 0 {
-			if asserted {
+			if utils.Asserted {
 				if equalCnt < 0 {
 					panic("bad code: equalCnt < 0")
 				}
@@ -499,7 +502,7 @@ func (mh *mapHeader[Key, Value]) hashEqualRefCtrl(cnt int) {
 }
 
 func (m Map[Key, Value]) GoMap() map[Key]Value {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
@@ -513,7 +516,7 @@ func (m Map[Key, Value]) GoMap() map[Key]Value {
 }
 
 func (m *Map[Key, Value]) Move() (moved Map[Key, Value]) {
-	if asserted {
+	if utils.Asserted {
 		if *m == nilMap {
 			panic("use a moved or freed or null map")
 		}
@@ -531,7 +534,7 @@ func (m Map[Key, Value]) Moved() bool {
 // :: defer func() {m.Free(&m)}()
 // instead of
 // :: m.Free(&m)
-func (m Map[Key, Value]) Free(mem *LocalMemory) {
+func (m Map[Key, Value]) Free() {
 	if m.pointer().IsNotNull() {
 		header := m.header()
 		if header.headerPageHandler.IsNull() {
@@ -540,8 +543,8 @@ func (m Map[Key, Value]) Free(mem *LocalMemory) {
 
 		header.hashEqualRefCtrl(-1)
 
-		header.table.Free(mem)
-		mem.freePage(header.headerPageHandler)
+		header.table.Free()
+		Global.freePage(header.headerPageHandler)
 	}
 }
 
@@ -576,7 +579,7 @@ func (m Map[Key, Value]) debugString() string {
 	})
 	s := sb.String()
 	if len(s) > 0 {
-		if asserted {
+		if utils.Asserted {
 			if s[len(s)-1] != '\n' {
 				panic("wrong string " + s)
 			}
@@ -586,15 +589,15 @@ func (m Map[Key, Value]) debugString() string {
 	return s
 }
 
-func (m Map[Key, Value]) checkCapacity(appendSize SizeType, mem *LocalMemory) error {
-	if asserted {
+func (m Map[Key, Value]) checkCapacity(appendSize SizeType) error {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
 	}
 	header := m.header()
 	if header.free+appendSize > header.tableLength {
-		if debug {
+		if utils.Debug {
 			fmt.Println("map capacity expense")
 		}
 		// new table
@@ -608,7 +611,7 @@ func (m Map[Key, Value]) checkCapacity(appendSize SizeType, mem *LocalMemory) er
 			}
 			newNormalizeCap <<= 1 // enlarge once again because a test encounters capacity expansion.
 
-			newTable, err = MakeSliceWithLength[entry[Key, Value]](mem, newNormalizeCap) // <<= 1 for link space
+			newTable, err = makeSliceWithLength0[entry[Key, Value]](newNormalizeCap, trace_type.MapTable, 5)
 			if err != nil {
 				return err
 			}
@@ -635,21 +638,21 @@ func (m Map[Key, Value]) checkCapacity(appendSize SizeType, mem *LocalMemory) er
 				if next != emptyTableFlag {
 					m.directPutNoGrow(slot.key, slot.value)
 					for next != listTailFlag {
-						slot = pointerAs[entry[Key, Value]](oldTableBasePtr + pointer(next*Sizeof[entry[Key, Value]]()))
+						slot = memory.PointerAs[entry[Key, Value]](oldTableBasePtr + memory.Pointer(next*memory.Sizeof[entry[Key, Value]]()))
 						m.directPutNoGrow(slot.key, slot.value)
 						next = slot.next
 					}
 				}
 				return true
 			})
-			oldTable.Free(mem)
+			oldTable.Free()
 		}
 	}
 	return nil
 }
 
-func (m Map[Key, Value]) pointer() pointer {
-	return pointer(m)
+func (m Map[Key, Value]) pointer() memory.Pointer {
+	return memory.Pointer(m)
 }
 
 func (m Map[Key, Value]) IsNull() bool {
@@ -657,10 +660,10 @@ func (m Map[Key, Value]) IsNull() bool {
 }
 
 func (m Map[Key, Value]) header() *mapHeader[Key, Value] {
-	if asserted {
+	if utils.Asserted {
 		if m.pointer().IsNull() {
 			panic("header of null")
 		}
 	}
-	return pointerAs[mapHeader[Key, Value]](m.pointer())
+	return memory.PointerAs[mapHeader[Key, Value]](m.pointer())
 }

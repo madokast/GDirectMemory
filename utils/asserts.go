@@ -1,12 +1,12 @@
-package direct
+package utils
 
 import (
 	"encoding/json"
 	"fmt"
 )
 
-const debug = false
-const asserted = true
+const Debug = false
+const Asserted = false
 
 func Assert(flag bool, infos ...interface{}) {
 	if !flag {

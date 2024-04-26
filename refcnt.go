@@ -2,6 +2,9 @@ package direct
 
 import (
 	"fmt"
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/memory/trace_type"
+	"github.com/madokast/direct/utils"
 	"sync/atomic"
 )
 
@@ -21,13 +24,13 @@ type objRefCnt[T object] struct {
 }
 
 type object interface {
-	Free(m *LocalMemory)
+	Free()
 	Moved() bool
 	String() string
 }
 
 func (s *Shared[T]) NotInit() bool {
-	if asserted {
+	if utils.Asserted {
 		if s.index == 0 && s.holder != nullSlice {
 			panic("use a freed shared obj")
 		}
@@ -40,7 +43,7 @@ func (s *Shared[T]) Value() T {
 }
 
 func (s *Shared[T]) Ref() *T {
-	if asserted {
+	if utils.Asserted {
 		if s.index == 0 {
 			if s.holder == nullSlice {
 				panic("use an un-init shared obj")
@@ -55,12 +58,12 @@ func (s *Shared[T]) Ref() *T {
 	return &s.holder.RefAt(s.index).obj
 }
 
-func (s *Shared[T]) String() string {
+func (s Shared[T]) String() string {
 	return (*s.Ref()).String()
 }
 
 func (s *Shared[T]) Share() Shared[T] {
-	if asserted {
+	if utils.Asserted {
 		if s.index == 0 {
 			if s.holder == nullSlice {
 				panic("use an un-init shared obj")
@@ -73,13 +76,13 @@ func (s *Shared[T]) Share() Shared[T] {
 		}
 	}
 	cnt := atomic.AddInt64(&s.holder.RefAt(s.index).refCnt, 1)
-	if debug {
+	if utils.Debug {
 		fmt.Println("share obj cnt", cnt)
 	}
 	return *s
 }
 
-func (s *Shared[T]) Free(m *LocalMemory) {
+func (s *Shared[T]) Free() {
 	if s.index == 0 {
 		if s.holder == nullSlice {
 			return // free an un-init shared is ok
@@ -88,29 +91,29 @@ func (s *Shared[T]) Free(m *LocalMemory) {
 		}
 	}
 	objCnt := s.holder.RefAt(s.index)
-	if asserted {
+	if utils.Asserted {
 		if atomic.LoadInt64(&objCnt.refCnt) == 0 {
 			panic("double free shared obj!")
 		}
 	}
 	cnt := atomic.AddInt64(&objCnt.refCnt, -1)
-	if debug {
+	if utils.Debug {
 		fmt.Println("free shared obj cnt", cnt)
 	}
-	if asserted {
+	if utils.Asserted {
 		if cnt < 0 {
 			panic(fmt.Sprint("double free shared obj. Cnt =", cnt))
 		}
 	}
 	if cnt == 0 {
-		objCnt.obj.Free(m)
+		objCnt.obj.Free()
 		header := s.holder.header()
-		holderRefCnt := atomic.AddInt32(pointerAs[int32](header.elementBasePointer), -1)
-		if debug {
+		holderRefCnt := atomic.AddInt32(memory.PointerAs[int32](header.elementBasePointer), -1)
+		if utils.Debug {
 			fmt.Println("do free shared obj, holder cnt", holderRefCnt)
 		}
 		if holderRefCnt == 0 {
-			s.holder.Free(m)
+			s.holder.Free()
 		}
 	}
 	s.index = 0
@@ -121,7 +124,7 @@ func (s *Shared[T]) Free(m *LocalMemory) {
 // SharedFactory creates sharedObj. Thread unsafe
 type SharedFactory[T object] struct {
 	holder Slice[objRefCnt[T]] // index 0 for holder-element-count
-	noCopy
+	noCopy utils.NoCopy
 }
 
 func CreateSharedFactory[T object]() SharedFactory[T] {
@@ -130,13 +133,13 @@ func CreateSharedFactory[T object]() SharedFactory[T] {
 	}
 }
 
-func (sf *SharedFactory[T]) MakeShared(obj T, m *LocalMemory) (s Shared[T], err error) {
-	var sfHolder = sf.holder                           // register
-	var sfHolderHeader *sliceHeader = nil              // register
-	var sfHolderHeaderElementBasePointer = nullPointer // register
+func (sf *SharedFactory[T]) MakeShared(obj T) (s Shared[T], err error) {
+	var sfHolder = sf.holder                                  // register
+	var sfHolderHeader *sliceHeader = nil                     // register
+	var sfHolderHeaderElementBasePointer = memory.NullPointer // register
 	if sfHolder == nullSlice {
 		// index 0 for count
-		sfHolder, err = makeSlice0[objRefCnt[T]](m, 2, "Shared", 3)
+		sfHolder, err = makeSlice0[objRefCnt[T]](2, trace_type.Shared, 3)
 		if err != nil {
 			return s, err
 		}
@@ -145,13 +148,13 @@ func (sf *SharedFactory[T]) MakeShared(obj T, m *LocalMemory) (s Shared[T], err 
 		sfHolderHeader.length = 1 // index 0 for holder-element-count
 		sfHolderHeaderElementBasePointer = sfHolderHeader.elementBasePointer
 		// init ref count. One means the factory holding it
-		*pointerAs[int32](sfHolderHeaderElementBasePointer) = 1
+		*memory.PointerAs[int32](sfHolderHeaderElementBasePointer) = 1
 	} else {
 		sfHolderHeader = sfHolder.header()
 		sfHolderHeaderElementBasePointer = sfHolderHeader.elementBasePointer
 	}
 
-	if asserted {
+	if utils.Asserted {
 		if sf.holder != sfHolder {
 			panic("bad code: f.holder != sfHolder")
 		}
@@ -174,25 +177,25 @@ func (sf *SharedFactory[T]) MakeShared(obj T, m *LocalMemory) (s Shared[T], err 
 		obj:    obj,
 		refCnt: 1, // cnt for the element
 	}
-	objTargetPtr := sfHolderHeaderElementBasePointer + pointer(s.index*Sizeof[objRefCnt[T]]())
-	*pointerAs[objRefCnt[T]](objTargetPtr) = objCnt
+	objTargetPtr := sfHolderHeaderElementBasePointer + memory.Pointer(s.index*memory.Sizeof[objRefCnt[T]]())
+	*memory.PointerAs[objRefCnt[T]](objTargetPtr) = objCnt
 	sfHolderHeader.length += 1
 
 	// add holder count
-	holderRefCnt := atomic.AddInt32(pointerAs[int32](sfHolderHeaderElementBasePointer), 1)
-	if asserted {
+	holderRefCnt := atomic.AddInt32(memory.PointerAs[int32](sfHolderHeaderElementBasePointer), 1)
+	if utils.Asserted {
 		if holderRefCnt <= 0 {
 			panic(fmt.Sprintf("holder count(%d) <= 0", holderRefCnt))
 		}
 	}
-	if debug {
+	if utils.Debug {
 		fmt.Printf("make shared obj in holder count %d\n", holderRefCnt)
 	}
 
 	// detach the full holder
 	if sfHolderHeader.length == sfHolderHeader.capacity {
-		holderRefCnt = atomic.AddInt32(pointerAs[int32](sfHolderHeaderElementBasePointer), -1)
-		if asserted {
+		holderRefCnt = atomic.AddInt32(memory.PointerAs[int32](sfHolderHeaderElementBasePointer), -1)
+		if utils.Asserted {
 			if holderRefCnt <= 0 {
 				panic(fmt.Sprintf("holderRefCnt(%d) <= 0", holderRefCnt))
 			}
@@ -203,17 +206,17 @@ func (sf *SharedFactory[T]) MakeShared(obj T, m *LocalMemory) (s Shared[T], err 
 	return s, nil
 }
 
-func (sf *SharedFactory[T]) Destroy(m *LocalMemory) {
+func (sf *SharedFactory[T]) Destroy() {
 	holder := sf.holder      // register
 	if holder != nullSlice { // maybe null
-		holderRefCnt := atomic.AddInt32(pointerAs[int32](holder.header().elementBasePointer), -1)
-		if asserted {
+		holderRefCnt := atomic.AddInt32(memory.PointerAs[int32](holder.header().elementBasePointer), -1)
+		if utils.Asserted {
 			if holderRefCnt < 0 {
 				panic(fmt.Sprintf("holderRefCnt(%d) <= 0", holderRefCnt))
 			}
 		}
 		if holderRefCnt == 0 {
-			holder.Free(m)
+			holder.Free()
 		}
 		sf.holder = nullSlice // detach the holder anyway
 	}

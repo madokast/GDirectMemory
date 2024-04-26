@@ -2,6 +2,9 @@ package direct
 
 import (
 	"fmt"
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/memory/trace_type"
+	"github.com/madokast/direct/utils"
 	"reflect"
 	"sync/atomic"
 	"unsafe"
@@ -10,7 +13,7 @@ import (
 // StringFactory creates String. Thread-unsafe
 type StringFactory struct {
 	holder Slice[byte] // str-count + data
-	noCopy noCopy
+	noCopy utils.NoCopy
 }
 
 func NewStringFactory() StringFactory {
@@ -19,50 +22,50 @@ func NewStringFactory() StringFactory {
 	}
 }
 
-func (sf *StringFactory) CreateFromGoString(gs string, m *LocalMemory) (s String, err error) {
+func (sf *StringFactory) CreateFromGoString(gs string) (s String, err error) {
 	var gsLength = SizeType(len(gs))
 	if gsLength == 0 {
 		return emptyString, nil
 	}
 
-	var sfHolder = sf.holder                           // register
-	var sfHolderHeader *sliceHeader = nil              // register
-	var sfHolderHeaderElementBasePointer = nullPointer // register
+	var sfHolder = sf.holder                                  // register
+	var sfHolderHeader *sliceHeader = nil                     // register
+	var sfHolderHeaderElementBasePointer = memory.NullPointer // register
 	if sfHolder != nullSlice {
 		sfHolderHeader = sfHolder.header()
 		sfHolderHeaderElementBasePointer = sfHolderHeader.elementBasePointer
 		if sfHolderHeader.length+gsLength > sfHolderHeader.capacity {
-			if debug {
+			if utils.Debug {
 				fmt.Printf("holder(len=%d, cap=%d) cannot add new string(len=%d)\n", sfHolderHeader.length, sfHolderHeader.capacity, gsLength)
 			}
 			// detach
-			cnt := atomic.AddInt32(pointerAs[int32](sfHolderHeaderElementBasePointer), -1)
-			if asserted {
+			cnt := atomic.AddInt32(memory.PointerAs[int32](sfHolderHeaderElementBasePointer), -1)
+			if utils.Asserted {
 				if cnt < 0 {
 					panic(fmt.Sprintf("string holder cnt(%d) < 0", cnt))
 				}
 			}
 			if cnt == 0 {
-				sfHolder.Free(m)
+				sfHolder.Free()
 			}
 			sfHolder = nullSlice
 		}
 	}
 	if sfHolder == nullSlice {
 		// int32 for count
-		sfHolder, err = makeSlice0[byte](m, gsLength+Sizeof[int32](), "String", 3)
+		sfHolder, err = makeSlice0[byte](gsLength+memory.Sizeof[int32](), trace_type.StringFactoryHolds(gs), 3)
 		if err != nil {
 			return emptyString, err
 		}
 		sf.holder = sfHolder
 		sfHolderHeader = sfHolder.header()
-		sfHolderHeader.length = Sizeof[int32]()
+		sfHolderHeader.length = memory.Sizeof[int32]()
 		sfHolderHeaderElementBasePointer = sfHolderHeader.elementBasePointer
 		// ref cnt 1 for the factory
-		*pointerAs[int32](sfHolderHeaderElementBasePointer) = 1
+		*memory.PointerAs[int32](sfHolderHeaderElementBasePointer) = 1
 	}
 
-	if asserted {
+	if utils.Asserted {
 		if sf.holder != sfHolder {
 			panic("bad code: f.holder != sfHolder")
 		}
@@ -80,37 +83,37 @@ func (sf *StringFactory) CreateFromGoString(gs string, m *LocalMemory) (s String
 
 	s.holder = sfHolder
 	s.length = gsLength
-	s.ptr = sfHolderHeaderElementBasePointer + pointer(sfHolderHeader.length)
+	s.ptr = sfHolderHeaderElementBasePointer + memory.Pointer(sfHolderHeader.length)
 
-	libMemMove(s.ptr, pointer((*reflect.StringHeader)(unsafe.Pointer(&gs)).Data), gsLength)
+	memory.LibMemMove(s.ptr, memory.Pointer((*reflect.StringHeader)(unsafe.Pointer(&gs)).Data), gsLength)
 	sfHolderHeader.length += s.length
 
 	// add count
-	cnt := atomic.AddInt32(pointerAs[int32](sfHolderHeaderElementBasePointer), 1)
-	if debug {
+	cnt := atomic.AddInt32(memory.PointerAs[int32](sfHolderHeaderElementBasePointer), 1)
+	if utils.Debug {
 		fmt.Printf("alloc string %s in holder count %d\n", gs, cnt)
 	}
 	return s, nil
 }
 
-func (sf *StringFactory) Destroy(m *LocalMemory) {
+func (sf *StringFactory) Destroy() {
 	holder := sf.holder
 	if holder != nullSlice {
-		cnt := atomic.AddInt32(pointerAs[int32](holder.header().elementBasePointer), -1)
-		if asserted {
+		cnt := atomic.AddInt32(memory.PointerAs[int32](holder.header().elementBasePointer), -1)
+		if utils.Asserted {
 			if cnt < 0 {
 				panic(fmt.Sprintf("string holder cnt(%d) < 0", cnt))
 			}
 		}
 		if cnt == 0 {
-			holder.Free(m)
+			holder.Free()
 		}
 		sf.holder = nullSlice
 	}
 }
 
 func init() {
-	if Sizeof[byte]() != 1 {
-		panic(fmt.Sprint("size of byte is not 1. ", Sizeof[byte]()))
+	if memory.Sizeof[byte]() != 1 {
+		panic(fmt.Sprint("size of byte is not 1. ", memory.Sizeof[byte]()))
 	}
 }

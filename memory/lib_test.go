@@ -1,4 +1,4 @@
-package direct
+package memory
 
 import (
 	"fmt"
@@ -9,8 +9,8 @@ import (
 
 func Test_libCMalloc(t *testing.T) {
 	const size = 16
-	ptr := libMalloc(size)
-	libZero(ptr, size)
+	ptr := LibMalloc(size)
+	LibZero(ptr, size)
 	var bs []byte
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Data = ptr.UIntPtr()
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Cap = size
@@ -18,13 +18,13 @@ func Test_libCMalloc(t *testing.T) {
 	for i, b := range bs {
 		t.Log(i, b)
 	}
-	libFree(ptr)
+	LibFree(ptr)
 }
 
 func Test_libCMalloc2(t *testing.T) {
 	const size = 1024 * 1024
-	ptr := libMalloc(size)
-	libZero(ptr, size)
+	ptr := LibMalloc(size)
+	LibZero(ptr, size)
 	var bs []byte
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Data = ptr.UIntPtr()
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Cap = size
@@ -34,12 +34,12 @@ func Test_libCMalloc2(t *testing.T) {
 			panic(fmt.Sprint(i, ", ", b))
 		}
 	}
-	libFree(ptr)
+	LibFree(ptr)
 }
 
 func Test_libCCalloc(t *testing.T) {
 	const size = 1024 * 1024
-	ptr := libCalloc(size)
+	ptr := LibCalloc(size)
 	var bs []byte
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Data = ptr.UIntPtr()
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Cap = size
@@ -49,14 +49,14 @@ func Test_libCCalloc(t *testing.T) {
 			panic(fmt.Sprint(i, ", ", b))
 		}
 	}
-	libFree(ptr)
+	LibFree(ptr)
 }
 
 func Benchmark_malloc(b *testing.B) {
 	const size = 128 * 1024 * 1024
 	for i := 0; i < b.N; i++ {
-		ptr := libMalloc(size)
-		libFree(ptr)
+		ptr := LibMalloc(size)
+		LibFree(ptr)
 	}
 }
 
@@ -69,15 +69,15 @@ func Benchmark_go_alloc(b *testing.B) {
 
 func Test_libMarkFreedMemory(t *testing.T) {
 	const size = 1024
-	ptr := libMalloc(size)
-	defer libFree(ptr)
+	ptr := LibMalloc(size)
+	defer LibFree(ptr)
 
 	var bs []byte
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Data = ptr.UIntPtr()
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Cap = size
 	((*reflect.SliceHeader)(unsafe.Pointer(&bs))).Len = size
 
-	libZero(ptr, size)
+	LibZero(ptr, size)
 	for i, b := range bs {
 		if b != 0 {
 			panic(fmt.Sprint(i, ", ", b))

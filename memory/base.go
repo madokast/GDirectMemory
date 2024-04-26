@@ -1,32 +1,33 @@
-package direct
+package memory
 
 import (
 	"fmt"
+	"github.com/madokast/direct/utils"
 	"math"
 	"unsafe"
 )
 
-type word = uint64    // link:wordSize
-type pointer word     // OS pointer
-type PageHandler word // point to a page
-type SizeType word    // size_t
+type Word = uint64    // link:wordSize
+type Pointer Word     // OS pointer
+type PageHandler Word // point to a page
+type SizeType Word    // size_t
 
 const wordSize = 8
-const basePageSizeShiftNumber = 8
-const basePageSize SizeType = 1 << basePageSizeShiftNumber
+const BasePageSizeShiftNumber = 8
+const BasePageSize SizeType = 1 << BasePageSizeShiftNumber
 
 const pageNumberShift = 32
 const pageIndexMask PageHandler = (1 << pageNumberShift) - 1
 const pageNumberMask = pageIndexMask << pageNumberShift
 
 const nullPageHandle = PageHandler(0)
-const nullPointer = pointer(0)
-const sizeTypeMax SizeType = math.MaxUint64
+const NullPointer = Pointer(0)
+const SizeTypeMax SizeType = math.MaxUint64
 
 var pageHandlerSize = unsafe.Sizeof(nullPageHandle)
 var sizeTypeSize = unsafe.Sizeof(SizeType(0))
 
-func makePageHandler(pageNumber SizeType, pageIndex SizeType) PageHandler {
+func MakePageHandler(pageNumber SizeType, pageIndex SizeType) PageHandler {
 	return PageHandler((pageNumber << pageNumberShift) + pageIndex)
 }
 
@@ -48,7 +49,7 @@ func (p PageHandler) PageNumber() SizeType {
 }
 
 func (p PageHandler) Size() SizeType {
-	return SizeType(p&pageNumberMask) >> (pageNumberShift - basePageSizeShiftNumber)
+	return SizeType(p&pageNumberMask) >> (pageNumberShift - BasePageSizeShiftNumber)
 }
 
 func (p PageHandler) Json() interface{} {
@@ -62,26 +63,26 @@ func (p PageHandler) Json() interface{} {
 }
 
 func (p PageHandler) String() string {
-	return Jsonify(p.Json())
+	return utils.Jsonify(p.Json())
 }
 
-func (p pointer) UIntPtr() uintptr {
+func (p Pointer) UIntPtr() uintptr {
 	return uintptr(p)
 }
 
-func (p pointer) UnsafePointer() unsafe.Pointer {
+func (p Pointer) UnsafePointer() unsafe.Pointer {
 	return unsafe.Pointer(uintptr(p))
 }
 
-func (p pointer) IsNull() bool {
-	return p == nullPointer
+func (p Pointer) IsNull() bool {
+	return p == NullPointer
 }
 
-func (p pointer) IsNotNull() bool {
-	return p != nullPointer
+func (p Pointer) IsNotNull() bool {
+	return p != NullPointer
 }
 
-func (p pointer) String() string {
+func (p Pointer) String() string {
 	if p.IsNull() {
 		return "null"
 	}
@@ -100,15 +101,8 @@ func (s SizeType) BitString() string {
 	return fmt.Sprintf("%b", s)
 }
 
-func pointerAs[T any](p pointer) *T {
+func PointerAs[T any](p Pointer) *T {
 	return (*T)(unsafe.Pointer(uintptr(p)))
-}
-
-const cacheLineSize = 64
-
-type cacheShareWord[T ~word] struct {
-	value T
-	_     [cacheLineSize - wordSize]byte
 }
 
 const KB = 1024
@@ -117,7 +111,7 @@ const GB = 1024 * MB
 
 var memorySizeUints = []string{"B", "KB", "MB", "GB"}
 
-func humanFriendlyMemorySize(memorySize SizeType) string {
+func HumanFriendlyMemorySize(memorySize SizeType) string {
 	size := float64(memorySize)
 	cnt := 0
 	for size >= 1024 {
@@ -140,10 +134,10 @@ func Sizeof[T any]() SizeType {
 }
 
 func init() {
-	if Sizeof[word]() < Sizeof[uintptr]() {
-		panic(fmt.Sprintf("word cannot hold a pointer %d %d", Sizeof[word](), Sizeof[uintptr]()))
+	if Sizeof[Word]() < Sizeof[uintptr]() {
+		panic(fmt.Sprintf("word cannot hold a pointer %d %d", Sizeof[Word](), Sizeof[uintptr]()))
 	}
-	if Sizeof[word]() != wordSize {
-		panic(fmt.Sprintf("wordSize is not correct %d %d", Sizeof[word](), wordSize))
+	if Sizeof[Word]() != wordSize {
+		panic(fmt.Sprintf("wordSize is not correct %d %d", Sizeof[Word](), wordSize))
 	}
 }

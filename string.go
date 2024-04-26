@@ -2,6 +2,8 @@ package direct
 
 import (
 	"fmt"
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/utils"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -10,7 +12,7 @@ import (
 
 // String represents an un-modifiable string in managed_memory.
 type String struct {
-	ptr    pointer
+	ptr    memory.Pointer
 	length SizeType
 	holder Slice[byte]
 }
@@ -44,7 +46,7 @@ func isString[T any]() bool {
 }
 
 func equalString[str any](s1, s2 str) bool {
-	if asserted {
+	if utils.Asserted {
 		if !isString[str]() {
 			panic(fmt.Sprintf("call equalString using non-string type s1=%v, s2=%v, type(s2)=%T", s1, s2, fmt.Sprintf("%T", s1)))
 		}
@@ -58,15 +60,15 @@ func (s String) Hashcode() (hash SizeType) {
 	i := SizeType(0)
 	for ; i < s.length; i++ {
 		hash *= prime32
-		//logger.Debug("at", fmt.Sprintf("%c", *pointerAs[byte](s.ptr)))
-		hash ^= SizeType(*pointerAs[byte](s.ptr))
+		//logger.Debug("at", fmt.Sprintf("%c", *PointerAs[byte](s.ptr)))
+		hash ^= SizeType(*memory.PointerAs[byte](s.ptr))
 		s.ptr++
 	}
 	return hash
 }
 
 func hashString[str any](s str) SizeType {
-	if asserted {
+	if utils.Asserted {
 		if !isString[str]() {
 			panic(fmt.Sprintf("call hashString using non-string type s=%v, type(s)=%T", s, fmt.Sprintf("%T", s)))
 		}
@@ -78,20 +80,20 @@ func (s String) String() string {
 	return s.CopyToGoString()
 }
 
-func (s String) Free(m *LocalMemory) {
+func (s String) Free() {
 	if s.holder.pointer().IsNotNull() {
 		header := s.holder.header()
-		cnt := atomic.AddInt32(pointerAs[int32](header.elementBasePointer), -1)
-		if asserted {
+		cnt := atomic.AddInt32(memory.PointerAs[int32](header.elementBasePointer), -1)
+		if utils.Asserted {
 			if cnt < 0 {
 				panic(fmt.Sprintf("string holder cnt <(%d) 0", cnt))
 			}
 		}
-		if debug {
+		if utils.Debug {
 			fmt.Printf("free string %s in holder count %d\n", s.AsGoString(), cnt)
 		}
 		if cnt == 0 {
-			s.holder.Free(m)
+			s.holder.Free()
 		}
 	}
 }
@@ -110,7 +112,7 @@ var emptyString = String{}
 var stringType = reflect.TypeOf(emptyString)
 
 func init() {
-	if Sizeof[String]()-Sizeof[Slice[byte]]() != Sizeof[string]() {
-		panic(fmt.Sprintf("string size is not correct %d %d", Sizeof[String](), Sizeof[word]()))
+	if memory.Sizeof[String]()-memory.Sizeof[Slice[byte]]() != memory.Sizeof[string]() {
+		panic(fmt.Sprintf("string size is not correct %d %d", memory.Sizeof[String](), memory.Sizeof[memory.Word]()))
 	}
 }

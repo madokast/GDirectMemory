@@ -2,68 +2,70 @@ package direct
 
 import (
 	"fmt"
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/memory/trace_type"
+	"github.com/madokast/direct/utils"
 	"reflect"
 	"unsafe"
 )
 
 // Slice represents a managed slice
 // the zero value is a zero-cap slice
-// the slice cannot be moved because of the exposed pointer
-type Slice[T any] pointer
+type Slice[T any] memory.Pointer
 
 // MakeSlice == make([]T, 0, elementCapacity)
-func MakeSlice[T any](m *LocalMemory, elementCapacity SizeType) (Slice[T], error) {
-	return makeSlice0[T](m, elementCapacity, "Slice", 3)
+func MakeSlice[T any](elementCapacity SizeType) (Slice[T], error) {
+	return makeSlice0[T](elementCapacity, trace_type.Slice, 3)
 }
 
 // makeSlice0 is the root make func doing alloc
-func makeSlice0[T any](m *LocalMemory, elementCapacity SizeType, _type string, traceSkip int) (Slice[T], error) {
-	sliceByteSize := Sizeof[sliceHeader]() + elementCapacity*Sizeof[T]()
-	pageNumber := (sliceByteSize + basePageSize - 1) >> basePageSizeShiftNumber
+func makeSlice0[T any](elementCapacity SizeType, _type trace_type.Type, traceSkip int) (Slice[T], error) {
+	sliceByteSize := memory.Sizeof[sliceHeader]() + elementCapacity*memory.Sizeof[T]()
+	pageNumber := (sliceByteSize + memory.BasePageSize - 1) >> memory.BasePageSizeShiftNumber
 
-	pageHandler, err := m.allocPage(pageNumber, _type, traceSkip)
+	pageHandler, err := Global.allocPage(pageNumber, _type, traceSkip)
 	if err != nil {
 		return nullSlice, err
 	}
-	pagePointer := m.pagePointerOf(pageHandler)
+	pagePointer := Global.pagePointerOf(pageHandler)
 
-	header := pointerAs[sliceHeader](pagePointer)
+	header := memory.PointerAs[sliceHeader](pagePointer)
 	header.length = 0
-	header.capacity = (pageHandler.Size() - Sizeof[sliceHeader]()) / Sizeof[T]()
+	header.capacity = (pageHandler.Size() - memory.Sizeof[sliceHeader]()) / memory.Sizeof[T]()
 	header.pageHandler = pageHandler
-	header.elementBasePointer = pagePointer + pointer(Sizeof[sliceHeader]())
+	header.elementBasePointer = pagePointer + memory.Pointer(memory.Sizeof[sliceHeader]())
 
 	return Slice[T](pagePointer), nil
 }
 
 // MakeSliceWithLength == make([]T, elementLength)
-func MakeSliceWithLength[T any](m *LocalMemory, elementLength SizeType) (Slice[T], error) {
-	return makeSliceWithLength0[T](m, elementLength, "Slice", 4)
+func MakeSliceWithLength[T any](elementLength SizeType) (Slice[T], error) {
+	return makeSliceWithLength0[T](elementLength, trace_type.Slice, 4)
 }
 
-func makeSliceWithLength0[T any](m *LocalMemory, elementLength SizeType, _type string, traceSkip int) (Slice[T], error) {
-	s, err := makeSlice0[T](m, elementLength, _type, traceSkip)
+func makeSliceWithLength0[T any](elementLength SizeType, _type trace_type.Type, traceSkip int) (Slice[T], error) {
+	s, err := makeSlice0[T](elementLength, _type, traceSkip)
 	if err != nil {
 		return nullSlice, err
 	}
 
 	header := s.header()
-	if asserted {
+	if utils.Asserted {
 		if header.capacity < elementLength {
 			panic(fmt.Sprintf("bad code header.capacity(%d) < elementLength(%d)", header.capacity, elementLength))
 		}
 	}
 	header.length = elementLength
-	libZero(header.elementBasePointer, elementLength*Sizeof[T]())
+	memory.LibZero(header.elementBasePointer, elementLength*memory.Sizeof[T]())
 	return s, nil
 }
 
-func MakeSliceFromGoSlice[T any](m *LocalMemory, gs []T) (Slice[T], error) {
+func MakeSliceFromGoSlice[T any](gs []T) (Slice[T], error) {
 	elementLength := SizeType(len(gs))
 	if elementLength == 0 {
 		return nullSlice, nil
 	}
-	s, err := makeSlice0[T](m, elementLength, "Slice", 3)
+	s, err := makeSlice0[T](elementLength, trace_type.Slice, 3)
 	if err != nil {
 		return nullSlice, err
 	}
@@ -71,18 +73,18 @@ func MakeSliceFromGoSlice[T any](m *LocalMemory, gs []T) (Slice[T], error) {
 	//	s.Set(SizeType(i), e)
 	//}
 	header := s.header()
-	if asserted {
+	if utils.Asserted {
 		if header.length != 0 {
 			panic(fmt.Sprintf("MakeSlice header.length is %d not 0", header.length))
 		}
 	}
 	header.length = elementLength
-	libMemMove(header.elementBasePointer, libGoSliceHeaderPointer(gs), elementLength*Sizeof[T]())
+	memory.LibMemMove(header.elementBasePointer, memory.LibGoSliceHeaderPointer(gs), elementLength*memory.Sizeof[T]())
 	return s, nil
 }
 
-func (s *Slice[T]) Append(val T, m *LocalMemory) (err error) {
-	err = s.checkCapacity(1, m)
+func (s *Slice[T]) Append(val T) (err error) {
+	err = s.checkCapacity(1)
 	if err != nil {
 		return err
 	}
@@ -90,18 +92,18 @@ func (s *Slice[T]) Append(val T, m *LocalMemory) (err error) {
 	last := header.length
 	header.length++
 	//*s.RefAt(last) = val
-	ptr := header.elementBasePointer + pointer(last*Sizeof[T]())
-	*pointerAs[T](ptr) = val
+	ptr := header.elementBasePointer + memory.Pointer(last*memory.Sizeof[T]())
+	*memory.PointerAs[T](ptr) = val
 	return nil
 }
 
-func (s *Slice[T]) AppendBatch(values Slice[T], m *LocalMemory) (err error) {
+func (s *Slice[T]) AppendBatch(values Slice[T]) (err error) {
 	appendNumber := values.Length()
 	if appendNumber == 0 {
 		return nil
 	}
 	s0 := *s
-	err = s.checkCapacity(appendNumber, m)
+	err = s.checkCapacity(appendNumber)
 	if err != nil {
 		return err
 	}
@@ -112,35 +114,35 @@ func (s *Slice[T]) AppendBatch(values Slice[T], m *LocalMemory) (err error) {
 	header := s.header()
 	start := header.length
 	header.length += appendNumber
-	if asserted {
+	if utils.Asserted {
 		if header.length > header.capacity {
 			panic(fmt.Sprintf("AppendBatch header.length(%d) > header.capacity(%d)", header.length, header.capacity))
 		}
 	}
-	libMemMove(header.elementBasePointer+pointer(start*Sizeof[T]()), values.header().elementBasePointer, appendNumber*Sizeof[T]())
+	memory.LibMemMove(header.elementBasePointer+memory.Pointer(start*memory.Sizeof[T]()), values.header().elementBasePointer, appendNumber*memory.Sizeof[T]())
 	return nil
 }
 
-func (s *Slice[T]) AppendGoSlice(values []T, m *LocalMemory) (err error) {
+func (s *Slice[T]) AppendGoSlice(values []T) (err error) {
 	appendNumber := SizeType(len(values))
 	if appendNumber == 0 {
 		return nil
 	}
-	err = s.checkCapacity(appendNumber, m)
+	err = s.checkCapacity(appendNumber)
 	if err != nil {
 		return err
 	}
 	header := s.header()
 	start := header.length
 	header.length += appendNumber
-	if asserted {
+	if utils.Asserted {
 		if header.length > header.capacity {
 			panic(fmt.Sprintf("AppendBatch header.length(%d) > header.capacity(%d)", header.length, header.capacity))
 		}
 	}
-	libMemMove(header.elementBasePointer+pointer(start*Sizeof[T]()),
-		pointer(((*reflect.SliceHeader)(unsafe.Pointer(&values))).Data),
-		appendNumber*Sizeof[T]())
+	memory.LibMemMove(header.elementBasePointer+memory.Pointer(start*memory.Sizeof[T]()),
+		memory.Pointer(((*reflect.SliceHeader)(unsafe.Pointer(&values))).Data),
+		appendNumber*memory.Sizeof[T]())
 	return nil
 }
 
@@ -167,32 +169,32 @@ func (s Slice[T]) Set(index SizeType, val T) {
 }
 
 func (s Slice[T]) RefAt(index SizeType) *T {
-	if asserted {
+	if utils.Asserted {
 		if index >= s.Length() {
 			panic(fmt.Sprintf("slice out of bound %d %d", index, s.header().length))
 		}
 	}
-	ptr := s.header().elementBasePointer + pointer(index*Sizeof[T]())
-	return pointerAs[T](ptr)
+	ptr := s.header().elementBasePointer + memory.Pointer(index*memory.Sizeof[T]())
+	return memory.PointerAs[T](ptr)
 }
 
-func (s *Slice[T]) checkCapacity(appendNumber SizeType, m *LocalMemory) (err error) {
-	if asserted {
+func (s *Slice[T]) checkCapacity(appendNumber SizeType) (err error) {
+	if utils.Asserted {
 		if appendNumber == 0 {
 			panic("bad code appendNumber is 0")
 		}
 	}
 	// handle null
 	if s.pointer().IsNull() {
-		*s, err = makeSlice0[T](m, appendNumber|8, "Slice", 4)
+		*s, err = makeSlice0[T](appendNumber|8, trace_type.Slice, 4)
 		return err
 	}
 
-	header := pointerAs[sliceHeader](s.pointer())
+	header := memory.PointerAs[sliceHeader](s.pointer())
 	originLength := header.length
 	targetCapacity := originLength + appendNumber
 	if targetCapacity > header.capacity {
-		if asserted {
+		if utils.Asserted {
 			if originLength > header.capacity {
 				panic(fmt.Sprintf("bad code originLength(%d) > header.capacity(%d)", originLength, header.capacity))
 			}
@@ -202,14 +204,14 @@ func (s *Slice[T]) checkCapacity(appendNumber SizeType, m *LocalMemory) (err err
 		if targetCapacity < minTarget {
 			targetCapacity = minTarget
 		}
-		s2, err = makeSlice0[T](m, targetCapacity, "Slice", 4)
+		s2, err = makeSlice0[T](targetCapacity, trace_type.Slice, 4)
 		if err != nil {
 			return err
 		}
 		s2Header := s2.header()
 		s2Header.length = header.length
-		libMemMove(s2Header.elementBasePointer, header.elementBasePointer, originLength*Sizeof[T]())
-		s.Free(m)
+		memory.LibMemMove(s2Header.elementBasePointer, header.elementBasePointer, originLength*memory.Sizeof[T]())
+		s.Free()
 		*s = s2
 	}
 	return nil
@@ -227,7 +229,7 @@ func (s Slice[T]) String() string {
 	return fmt.Sprintf("%+v", s.GoSlice())
 }
 
-func (s Slice[T]) Copy(m *LocalMemory) (Slice[T], error) {
+func (s Slice[T]) Copy() (Slice[T], error) {
 	if s == nullSlice {
 		return nullSlice, nil
 	}
@@ -236,13 +238,13 @@ func (s Slice[T]) Copy(m *LocalMemory) (Slice[T], error) {
 	if srcLength == 0 {
 		return nullSlice, nil
 	}
-	cp, err := makeSlice0[T](m, srcLength, "Slice", 3)
+	cp, err := makeSlice0[T](srcLength, trace_type.Slice, 3)
 	if err != nil {
 		return nullSlice, err
 	}
 	cpHeader := cp.header()
 	cpHeader.length = srcLength
-	libMemMove(cpHeader.elementBasePointer, srcHeader.elementBasePointer, srcLength*Sizeof[T]())
+	memory.LibMemMove(cpHeader.elementBasePointer, srcHeader.elementBasePointer, srcLength*memory.Sizeof[T]())
 	return cp, nil
 }
 
@@ -256,32 +258,32 @@ func (s Slice[T]) Moved() bool {
 	return s == nullSlice
 }
 
-func (s Slice[T]) Free(m *LocalMemory) {
+func (s Slice[T]) Free() {
 	if s.pointer().IsNotNull() {
-		if asserted {
+		if utils.Asserted {
 			if s.header().pageHandler.IsNull() {
 				panic("double free?")
 			}
 		}
-		m.freePage(s.header().pageHandler)
+		Global.freePage(s.header().pageHandler)
 	}
 }
 
-func (s Slice[T]) pointer() pointer {
-	return pointer(s)
+func (s Slice[T]) pointer() memory.Pointer {
+	return memory.Pointer(s)
 }
 
 func (s Slice[T]) header() *sliceHeader {
-	if asserted {
+	if utils.Asserted {
 		if s.pointer().IsNull() {
 			panic("header of null")
 		}
 	}
-	return pointerAs[sliceHeader](s.pointer())
+	return memory.PointerAs[sliceHeader](s.pointer())
 }
 
 func SliceCopy[T any](src, dst Slice[T], elementNumber SizeType) {
-	if asserted {
+	if utils.Asserted {
 		if src.Length() < elementNumber {
 			panic(fmt.Sprintf("SliceCopy src.Length(%d) < elementNumber(%d)", src.Length(), elementNumber))
 		}
@@ -289,7 +291,7 @@ func SliceCopy[T any](src, dst Slice[T], elementNumber SizeType) {
 			panic(fmt.Sprintf("SliceCopy dst.Length(%d) < elementNumber(%d)", dst.Length(), elementNumber))
 		}
 	}
-	libMemMove(dst.header().elementBasePointer, src.header().elementBasePointer, elementNumber*Sizeof[T]())
+	memory.LibMemMove(dst.header().elementBasePointer, src.header().elementBasePointer, elementNumber*memory.Sizeof[T]())
 }
 
 const nullSlice = 0
@@ -297,6 +299,6 @@ const nullSlice = 0
 type sliceHeader struct {
 	length             SizeType
 	capacity           SizeType
-	pageHandler        PageHandler // for free
-	elementBasePointer pointer     // pointer to first element
+	pageHandler        memory.PageHandler // for free
+	elementBasePointer memory.Pointer     // pointer to first element
 }

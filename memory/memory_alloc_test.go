@@ -1,6 +1,7 @@
-package direct
+package memory
 
 import (
+	"github.com/madokast/direct/utils"
 	"testing"
 )
 
@@ -9,7 +10,7 @@ func TestMemory_pageAsBytes(t *testing.T) {
 	t.Log(memory)
 	defer memory.Free()
 	page, err := memory.allocPage(4)
-	PanicErr(err)
+	utils.PanicErr(err)
 	defer memory.freePage(page)
 	bytes := memory.pageAsBytes(page)
 	memory.pageZero(page)

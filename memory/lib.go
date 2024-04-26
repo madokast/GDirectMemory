@@ -1,43 +1,48 @@
-package direct
+package memory
 
 import (
+	"fmt"
 	"reflect"
 	"unsafe"
 )
 
-func libMalloc(size SizeType) pointer {
-	return pointer(uintptr(sysAllocOS(size.UIntPtr())))
+func LibMalloc(size SizeType) Pointer {
+	pointer := Pointer(uintptr(sysAllocOS(size.UIntPtr())))
+	if pointer.IsNull() {
+		panic(fmt.Sprintf("cannot allocate memory %s", HumanFriendlyMemorySize(size)))
+	}
+	return pointer
 }
 
-func libCalloc(size SizeType) pointer {
-	ptr := libMalloc(size)
-	libZero(ptr, size)
+func LibCalloc(size SizeType) Pointer {
+	ptr := LibMalloc(size)
+	LibZero(ptr, size)
 	return ptr
 }
 
-func libFree(ptr pointer) {
+func LibFree(ptr Pointer) {
 	sysFreeOS(ptr.UnsafePointer(), 0) // 0 is ok, just for log
 }
 
-func libZero(ptr pointer, size SizeType) {
+func LibZero(ptr Pointer, size SizeType) {
 	memclrNoHeapPointers(unsafe.Pointer(ptr.UIntPtr()), size.UIntPtr())
 }
 
-func libMemMove(to, from pointer, size SizeType) {
+func LibMemMove(to, from Pointer, size SizeType) {
 	memmove(unsafe.Pointer(to.UIntPtr()), unsafe.Pointer(from.UIntPtr()), size.UIntPtr())
 }
 
-func libMemEqual(p1, p2 pointer, size SizeType) bool {
+func LibMemEqual(p1, p2 Pointer, size SizeType) bool {
 	return memequal(unsafe.Pointer(p1.UIntPtr()), unsafe.Pointer(p2.UIntPtr()), size.UIntPtr())
 }
 
-func libGoSliceHeaderPointer[E any](slice []E) pointer {
-	return pointer((*reflect.SliceHeader)(unsafe.Pointer(&slice)).Data)
+func LibGoSliceHeaderPointer[E any](slice []E) Pointer {
+	return Pointer((*reflect.SliceHeader)(unsafe.Pointer(&slice)).Data)
 }
 
 const markFreeMemoryValue = 0b1010
 
-func libMarkFreedMemory(ptr pointer, size SizeType) {
+func libMarkFreedMemory(ptr Pointer, size SizeType) {
 	var bs []byte
 	*((*reflect.SliceHeader)(unsafe.Pointer(&bs))) = reflect.SliceHeader{
 		Data: ptr.UIntPtr(),

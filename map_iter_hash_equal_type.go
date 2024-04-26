@@ -2,6 +2,8 @@ package direct
 
 import (
 	"fmt"
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/utils"
 	"reflect"
 	"unsafe"
 )
@@ -9,12 +11,12 @@ import (
 type MapIterator[Key comparable, Value any] struct {
 	tableIter    SliceIterator[entry[Key, Value]]
 	currentSlot  *entry[Key, Value]
-	tableBasePtr pointer
-	noCopy       noCopy
+	tableBasePtr memory.Pointer
+	noCopy       utils.NoCopy
 }
 
 func (m Map[Key, Value]) Iterator() (iter MapIterator[Key, Value]) {
-	if asserted {
+	if utils.Asserted {
 		if m.IsNull() {
 			panic(fmt.Sprintf("use a moved or freed or null map"))
 		}
@@ -22,9 +24,9 @@ func (m Map[Key, Value]) Iterator() (iter MapIterator[Key, Value]) {
 	header := m.header()
 	return MapIterator[Key, Value]{
 		tableIter: SliceIterator[entry[Key, Value]]{
-			cur:   header.tableBasePtr - pointer(Sizeof[entry[Key, Value]]()),
-			end:   header.tableBasePtr + pointer((header.mask+1)*Sizeof[entry[Key, Value]]()),
-			index: sizeTypeMax,
+			cur:   header.tableBasePtr - memory.Pointer(memory.Sizeof[entry[Key, Value]]()),
+			end:   header.tableBasePtr + memory.Pointer((header.mask+1)*memory.Sizeof[entry[Key, Value]]()),
+			index: memory.SizeTypeMax,
 		},
 		currentSlot:  nil,
 		tableBasePtr: header.tableBasePtr,
@@ -36,7 +38,7 @@ func (mi *MapIterator[Key, Value]) Next() bool {
 	if currentSlot != nil { // next slot in list
 		next := currentSlot.next
 		if next != listTailFlag {
-			mi.currentSlot = pointerAs[entry[Key, Value]](mi.tableBasePtr + pointer(next*Sizeof[entry[Key, Value]]()))
+			mi.currentSlot = memory.PointerAs[entry[Key, Value]](mi.tableBasePtr + memory.Pointer(next*memory.Sizeof[entry[Key, Value]]()))
 			return true
 		}
 		// else find in table
@@ -49,7 +51,7 @@ func (mi *MapIterator[Key, Value]) Next() bool {
 			return true
 		}
 	}
-	if asserted {
+	if utils.Asserted {
 		mi.currentSlot = nil
 	}
 	return false
@@ -64,7 +66,7 @@ func (mi *MapIterator[Key, Value]) Value() Value {
 }
 
 func (mi *MapIterator[Key, Value]) KeyRef() *Key {
-	if asserted {
+	if utils.Asserted {
 		if mi.currentSlot == nil {
 			panic("access iter-map before check Next()")
 		}
@@ -73,7 +75,7 @@ func (mi *MapIterator[Key, Value]) KeyRef() *Key {
 }
 
 func (mi *MapIterator[Key, Value]) ValueRef() *Value {
-	if asserted {
+	if utils.Asserted {
 		if mi.currentSlot == nil {
 			panic("access iter-map before check Next()")
 		}
@@ -84,7 +86,7 @@ func (mi *MapIterator[Key, Value]) ValueRef() *Value {
 /* ==================== Iterate ============================*/
 
 func (m Map[Key, Value]) Iterate(iter func(Key, Value)) {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
@@ -108,7 +110,7 @@ func (m Map[Key, Value]) Iterate(iter func(Key, Value)) {
 }
 
 func (m Map[Key, Value]) IterateBreakable(iter func(Key, Value) (_continue_ bool)) {
-	if asserted {
+	if utils.Asserted {
 		if m == nilMap {
 			panic("use a moved or freed or null map")
 		}
@@ -191,26 +193,26 @@ func isSimpleType0(tp reflect.Type) bool {
 }
 
 func simpleHash[T any](value T) SizeType {
-	switch Sizeof[T]() {
+	switch memory.Sizeof[T]() {
 	case 0:
 		return 0
 	case 1:
-		return SizeType(*pointerAs[uint8](pointer(uintptr(unsafe.Pointer(&value)))))
+		return SizeType(*memory.PointerAs[uint8](memory.Pointer(uintptr(unsafe.Pointer(&value)))))
 	case 2:
-		return SizeType(*pointerAs[uint16](pointer(uintptr(unsafe.Pointer(&value)))))
+		return SizeType(*memory.PointerAs[uint16](memory.Pointer(uintptr(unsafe.Pointer(&value)))))
 	case 4:
-		return SizeType(*pointerAs[uint32](pointer(uintptr(unsafe.Pointer(&value)))))
+		return SizeType(*memory.PointerAs[uint32](memory.Pointer(uintptr(unsafe.Pointer(&value)))))
 	case 8:
-		return SizeType(*pointerAs[uint64](pointer(uintptr(unsafe.Pointer(&value)))))
+		return SizeType(*memory.PointerAs[uint64](memory.Pointer(uintptr(unsafe.Pointer(&value)))))
 	case 16:
-		return SizeType(*pointerAs[uint64](pointer(uintptr(unsafe.Pointer(&value))))) +
-			SizeType(*pointerAs[uint64](pointer(uintptr(unsafe.Pointer(&value))))+8)
+		return SizeType(*memory.PointerAs[uint64](memory.Pointer(uintptr(unsafe.Pointer(&value))))) +
+			SizeType(*memory.PointerAs[uint64](memory.Pointer(uintptr(unsafe.Pointer(&value))))+8)
 	default:
 		helper := simpleHashHelper[T]{
 			value: value,
 		}
-		ptr := pointer(uintptr(unsafe.Pointer(&helper)))
-		return *pointerAs[SizeType](ptr)
+		ptr := memory.Pointer(uintptr(unsafe.Pointer(&helper)))
+		return *memory.PointerAs[SizeType](ptr)
 	}
 }
 
@@ -242,7 +244,7 @@ func isMap[T any]() bool {
 }
 
 func init() {
-	if Sizeof[mapHeader[int, int]]() > basePageSize {
-		panic(fmt.Sprint("size of mapHeader ", Sizeof[mapHeader[int, int]](), " > 1 page ", basePageSize))
+	if memory.Sizeof[mapHeader[int, int]]() > memory.BasePageSize {
+		panic(fmt.Sprint("size of mapHeader ", memory.Sizeof[mapHeader[int, int]](), " > 1 page ", memory.BasePageSize))
 	}
 }

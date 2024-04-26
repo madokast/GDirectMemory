@@ -1,10 +1,15 @@
 package direct
 
+import (
+	"github.com/madokast/direct/memory"
+	"github.com/madokast/direct/utils"
+)
+
 type SliceIterator[T any] struct {
-	cur    pointer
-	end    pointer
+	cur    memory.Pointer
+	end    memory.Pointer
 	index  SizeType
-	noCopy noCopy
+	noCopy utils.NoCopy
 }
 
 func (s Slice[T]) Iterator() (iter SliceIterator[T]) {
@@ -12,16 +17,16 @@ func (s Slice[T]) Iterator() (iter SliceIterator[T]) {
 	if sp.IsNull() {
 		// do nothing
 	} else {
-		header := pointerAs[sliceHeader](sp)
-		iter.cur = header.elementBasePointer - pointer(Sizeof[T]()) // -1
-		iter.end = header.elementBasePointer + pointer(header.length*Sizeof[T]())
-		iter.index = sizeTypeMax // -1
+		header := memory.PointerAs[sliceHeader](sp)
+		iter.cur = header.elementBasePointer - memory.Pointer(memory.Sizeof[T]()) // -1
+		iter.end = header.elementBasePointer + memory.Pointer(header.length*memory.Sizeof[T]())
+		iter.index = SizeTypeMax // -1
 	}
 	return
 }
 
 func (it *SliceIterator[T]) Next() bool {
-	it.cur += pointer(Sizeof[T]())
+	it.cur += memory.Pointer(memory.Sizeof[T]())
 	it.index += 1
 	return it.cur < it.end
 }
@@ -31,29 +36,29 @@ func (it *SliceIterator[T]) Value() T {
 }
 
 func (it *SliceIterator[T]) Ref() *T {
-	if asserted {
+	if utils.Asserted {
 		if it.cur >= it.end {
 			panic("iterator index out of bound")
 		}
-		if it.end == nullPointer {
+		if it.end == memory.NullPointer {
 			panic("iterator accesses an empty slice")
 		}
-		if it.index == sizeTypeMax {
+		if it.index == SizeTypeMax {
 			panic("iterator accesses before call Next()")
 		}
 	}
-	return pointerAs[T](it.cur)
+	return memory.PointerAs[T](it.cur)
 }
 
 func (it *SliceIterator[T]) Index() SizeType {
-	if asserted {
+	if utils.Asserted {
 		if it.cur >= it.end {
 			panic("iterator index out of bound")
 		}
-		if it.end == nullPointer {
+		if it.end == memory.NullPointer {
 			panic("iterator accesses an empty slice")
 		}
-		if it.index == sizeTypeMax {
+		if it.index == SizeTypeMax {
 			panic("iterator accesses before call Next()")
 		}
 	}
@@ -66,8 +71,8 @@ func (s Slice[T]) Iterate(iter func(T)) {
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			iter(*pointerAs[T](ptr))
-			ptr += pointer(Sizeof[T]())
+			iter(*memory.PointerAs[T](ptr))
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
@@ -78,8 +83,8 @@ func (s Slice[T]) IterateRef(iter func(*T)) {
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			iter(pointerAs[T](ptr))
-			ptr += pointer(Sizeof[T]())
+			iter(memory.PointerAs[T](ptr))
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
@@ -90,10 +95,10 @@ func (s Slice[T]) IterateBreakable(iter func(T) (_continue_ bool)) {
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			if !iter(*pointerAs[T](ptr)) {
+			if !iter(*memory.PointerAs[T](ptr)) {
 				break
 			}
-			ptr += pointer(Sizeof[T]())
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
@@ -104,8 +109,8 @@ func (s Slice[T]) IterateIndex(iter func(index SizeType, element T)) {
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			iter(i, *pointerAs[T](ptr))
-			ptr += pointer(Sizeof[T]())
+			iter(i, *memory.PointerAs[T](ptr))
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
@@ -116,8 +121,8 @@ func (s Slice[T]) IterateRefIndex(iter func(index SizeType, ref *T)) {
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			iter(i, pointerAs[T](ptr))
-			ptr += pointer(Sizeof[T]())
+			iter(i, memory.PointerAs[T](ptr))
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
@@ -128,10 +133,10 @@ func (s Slice[T]) IterateIndexBreakable(iter func(index SizeType, element T) (_c
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			if !iter(i, *pointerAs[T](ptr)) {
+			if !iter(i, *memory.PointerAs[T](ptr)) {
 				break
 			}
-			ptr += pointer(Sizeof[T]())
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
@@ -142,10 +147,10 @@ func (s Slice[T]) IterateRefIndexBreakable(iter func(index SizeType, element *T)
 		ptr := header.elementBasePointer
 		length := header.length
 		for i := SizeType(0); i < length; i++ {
-			if !iter(i, pointerAs[T](ptr)) {
+			if !iter(i, memory.PointerAs[T](ptr)) {
 				break
 			}
-			ptr += pointer(Sizeof[T]())
+			ptr += memory.Pointer(memory.Sizeof[T]())
 		}
 	}
 }
