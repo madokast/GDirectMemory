@@ -14,7 +14,7 @@ Used only for leak detection.
 Bad performance.
 */
 
-const Trace = true
+const Trace = false
 
 type traceRecord struct {
 	pageIndex SizeType
